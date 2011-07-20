@@ -79,10 +79,7 @@ static int tegra_fb_open(struct fb_info *info, int user)
 {
 	struct tegra_fb_info *tegra_fb = info->par;
 
-	if (atomic_xchg(&tegra_fb->in_use, 1))
-		return -EBUSY;
-
-	tegra_fb->user_nvmap = NULL;
+	atomic_inc(&tegra_fb->in_use);
 
 	return 0;
 }
@@ -91,6 +88,9 @@ static int tegra_fb_release(struct fb_info *info, int user)
 {
 	struct tegra_fb_info *tegra_fb = info->par;
 	struct fb_var_screeninfo *var = &info->var;
+
+        if (atomic_dec_return(&tegra_fb->in_use))
+                return 0;
 
 	flush_workqueue(tegra_fb->flip_wq);
 
@@ -115,8 +115,6 @@ static int tegra_fb_release(struct fb_info *info, int user)
 		nvmap_client_put(tegra_fb->user_nvmap);
 		tegra_fb->user_nvmap = NULL;
 	}
-
-	WARN_ON(!atomic_xchg(&tegra_fb->in_use, 0));
 
 	return 0;
 }
@@ -418,10 +416,10 @@ static int tegra_fb_set_windowattr(struct tegra_fb_info *tegra_fb,
 	win->out_h = flip_win->attr.out_h;
 
 	WARN_ONCE(win->out_x >= xres,
-		"%s:application window x offset exceeds display width(%d)\n",
+		"%s:application window x offset(%d) exceeds display width(%d)\n",
 		dev_name(&win->dc->ndev->dev), win->out_x, xres);
 	WARN_ONCE(win->out_y >= yres,
-		"%s:application window y offset exceeds display height(%d)\n",
+		"%s:application window x offset(%d) exceeds display width(%d)\n",
 		dev_name(&win->dc->ndev->dev), win->out_y, yres);
 	WARN_ONCE(win->out_x + win->out_w > xres && win->out_x < xres,
 		"%s:application window width(%d) exceeds display width(%d)\n",
@@ -579,6 +577,25 @@ surf_err:
 	return err;
 }
 
+static int tegra_fb_mmap(struct fb_info *info, struct vm_area_struct *vma)
+{
+        struct tegra_fb_info *tegra_fb = info->par;
+        struct tegra_dc_win *win = tegra_fb->win;
+        unsigned long size = vma->vm_end - vma->vm_start;
+        unsigned long offset = vma->vm_pgoff << PAGE_SHIFT;
+ 
+        if (offset + size > win->size)
+                return -EINVAL;
+
+        offset += win->phys_addr + win->offset;
+        if (remap_pfn_range(vma, vma->vm_start, offset >> PAGE_SHIFT,
+                            size, PAGE_READONLY))
+                return -EAGAIN;
+
+        vma->vm_flags |= VM_RESERVED;
+        return 0;
+}
+
 /* TODO: implement private window ioctls to set overlay x,y */
 
 static int tegra_fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
@@ -667,6 +684,7 @@ static struct fb_ops tegra_fb_ops = {
 	.fb_fillrect = tegra_fb_fillrect,
 	.fb_copyarea = tegra_fb_copyarea,
 	.fb_imageblit = tegra_fb_imageblit,
+        .fb_mmap = tegra_fb_mmap,
 	.fb_ioctl = tegra_fb_ioctl,
 };
 
@@ -776,7 +794,7 @@ struct tegra_fb_info *tegra_fb_register(struct nvhost_device *ndev,
 	if (!tegra_fb->flip_wq) {
 		dev_err(&ndev->dev, "couldn't create flip work-queue\n");
 		ret = -ENOMEM;
-		goto err_delete_wq;
+		goto err_put_client;
 	}
 
 	if (fb_mem) {
@@ -786,7 +804,7 @@ struct tegra_fb_info *tegra_fb_register(struct nvhost_device *ndev,
 		if (!fb_base) {
 			dev_err(&ndev->dev, "fb can't be mapped\n");
 			ret = -EBUSY;
-			goto err_put_client;
+			goto err_delete_wq;
 		}
 		tegra_fb->valid = true;
 	}
@@ -862,10 +880,10 @@ struct tegra_fb_info *tegra_fb_register(struct nvhost_device *ndev,
 
 err_iounmap_fb:
 	iounmap(fb_base);
-err_put_client:
-	nvmap_client_put(tegra_fb->fb_nvmap);
 err_delete_wq:
 	destroy_workqueue(tegra_fb->flip_wq);
+err_put_client:
+        nvmap_client_put(tegra_fb->fb_nvmap);
 err_free:
 	framebuffer_release(info);
 err:

@@ -686,7 +686,7 @@ struct avp_svc_info *avp_svc_init(struct platform_device *pdev,
 		ret = -ENOENT;
 		goto err_get_clks;
 	}
-	clk_set_rate(avp_svc->sclk, ULONG_MAX);
+	clk_set_rate(avp_svc->sclk, 0);
 
 	avp_svc->emcclk = clk_get(&pdev->dev, "emc");
 	if (IS_ERR(avp_svc->emcclk)) {
@@ -716,6 +716,7 @@ err_get_clks:
 		clk_put(avp_svc->sclk);
 	if (!IS_ERR_OR_NULL(avp_svc->emcclk))
 		clk_put(avp_svc->emcclk);
+        kfree(avp_svc);
 err_alloc:
 	return ERR_PTR(ret);
 }

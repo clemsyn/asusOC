@@ -1760,6 +1760,12 @@ static void setup_received_irq(struct fsl_udc *udc,
 		if ((setup->bRequestType & (USB_DIR_IN | USB_TYPE_MASK))
 					!= (USB_DIR_IN | USB_TYPE_STANDARD))
 			break;
+
+        #ifdef CONFIG_ARCH_TEGRA
+                /* This delay is necessary for some windows drivers to
+                 * properly recognize the device */
+                mdelay(1);
+#endif
 		ch9getstatus(udc, setup->bRequestType, wValue, wIndex, wLength);
 		return;
 

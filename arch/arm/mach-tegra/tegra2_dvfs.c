@@ -40,7 +40,7 @@ static bool tegra_dvfs_cpu_disabled = true;
 static const int core_millivolts[MAX_DVFS_FREQS] =
 	{950, 1000, 1100, 1200, 1225, 1275, 1350};
 static const int cpu_millivolts[MAX_DVFS_FREQS] =
-	{750, 800, 825, 850, 875, 950, 975, 1025, 1050, 1100, 1150, 1250, 1300, 1400, 1450};
+	{750, 800, 825, 850, 875, 950, 975, 1025, 1050, 1100, 1150, 1250, 1300, 1425, 1450};
 
 static const int cpu_speedo_nominal_millivolts[] =
 /* spedo_id  0,    1,    2 */
@@ -153,7 +153,7 @@ static struct dvfs_rail *tegra2_dvfs_rails[] = {
 	}
 
 static struct dvfs dvfs_init[] = {
-	/* Cpu voltages (mV):	   750, 800, 825, 850, 875, 950, 975, 1025, 1050, 1100, 1150, 1250, 1300, 1400, 1450 */
+	/* Cpu voltages (mV):	   750, 800, 825, 850, 875, 950, 975, 1025, 1050, 1100, 1150, 1250, 1300, 1425, 1450 */
 	CPU_DVFS("cpu", 0, 0, MHZ, 314, 314, 314, 456, 456, 456,  608,  608,  608,  760,  817,  817,  912,  1000),
 	CPU_DVFS("cpu", 0, 1, MHZ, 314, 314, 314, 456, 456, 456,  618,  618,  618,  770,  827,  827,  922,  1000),
 	CPU_DVFS("cpu", 0, 2, MHZ, 494, 494, 494, 675, 675, 817,  817,  922,  922,  1000),
@@ -202,6 +202,7 @@ static struct dvfs dvfs_init[] = {
 	CORE_DVFS("pcie",    -1, 1, KHZ, 0,      0,      0,      250000, 250000, 250000, 250000),
 	CORE_DVFS("dsi",     -1, 1, KHZ, 100000, 100000, 100000, 500000, 500000, 500000, 500000),
 	CORE_DVFS("tvo",     -1, 1, KHZ, 0,      0,      0,      250000, 250000, 250000, 250000),
+        CORE_DVFS("fuse_burn", -1, 1, KHZ, 0,      0,      0,       26000,  26000,  26000,  26000),
 
 	/*
 	 * The clock rate for the display controllers that determines the

@@ -1051,10 +1051,9 @@ int mmc_resume_bus(struct mmc_host *host)
 		mmc_power_up(host);
 		BUG_ON(!host->bus_ops->resume);
 		host->bus_ops->resume(host);
-	}
-
-	if (host->bus_ops->detect && !host->bus_dead)
-		host->bus_ops->detect(host);
+	         if (host->bus_ops->detect)
+                        host->bus_ops->detect(host);
+        }
 
 	mmc_bus_put(host);
 	printk("%s: Deferred resume completed\n", mmc_hostname(host));
@@ -1884,7 +1883,8 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 	case PM_POST_HIBERNATION:
 	case PM_POST_RESTORE:
 
-		spin_lock_irqsave(&host->lock, flags);
+	      spin_lock_irqsave(&host->lock, flags);
+              host->rescan_disable = 0;
               if(sd_wake_status == 0x800000 && !strcmp(mmc_hostname(host), SDHOST_STRING))
               {
                      MMC_printk("reset defer resume");
@@ -1895,7 +1895,6 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 			spin_unlock_irqrestore(&host->lock, flags);
 			break;
 		}
-		host->rescan_disable = 0;
 		spin_unlock_irqrestore(&host->lock, flags);
 		if(!strcmp(mmc_hostname(host), SDHOST_STRING))
 		{

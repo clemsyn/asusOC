@@ -45,9 +45,10 @@
 #define TEGRA_FB_WIN_FMT_YCbCr422RA	24
 #define TEGRA_FB_WIN_FMT_YUV422RA	25
 
-#define TEGRA_FB_WIN_BLEND_NONE	0
+#define TEGRA_FB_WIN_BLEND_NONE        0
 #define TEGRA_FB_WIN_BLEND_PREMULT 1
 #define TEGRA_FB_WIN_BLEND_COVERAGE 2
+
 
 /* set index to -1 to ignore window data */
 struct tegra_fb_windowattr {
