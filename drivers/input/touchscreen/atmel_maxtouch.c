@@ -38,6 +38,7 @@
 #include <linux/delay.h>
 #include <linux/gpio.h>
 #include <../arch/arm/mach-tegra/gpio-names.h>
+#include <mach/board-ventana-misc.h>
 
 /*
  * This is a driver for the Atmel maXTouch Object Protocol
@@ -259,6 +260,8 @@ struct mxt_data {
 	struct mutex msg_mutex;
 	struct attribute_group attrs;
 	int status;
+	struct semaphore sem;
+	bool interruptable;
 };
 
 #define I2C_RETRY_COUNT 5
@@ -340,7 +343,9 @@ typedef struct
      Define the checksum of default configuration and change this macro every time 
      when the touch configuration was changed.
 */
-#define DEFAULT_CONFIG_CHECHSUM 0x81AFD3
+#define DEFAULT_CONFIG_CHECKSUM_SINTEK 0x5D4FC1
+#define DEFAULT_CONFIG_CHECKSUM_WINTEK 0x241C70
+static u32 touch_config_checksum;
 
 static report_finger_info_struct fingerInfo[10]={0};
 
@@ -445,6 +450,66 @@ static ssize_t dump_T7(struct device *dev, struct device_attribute *devattr, cha
 
 	return strlen(buf);
 }
+static ssize_t dump_T22(struct device *dev, struct device_attribute *devattr, char *buf)
+{	
+	int i;
+	u8 tmp[34];
+	char tmpstr[100];
+	struct i2c_client *client = to_i2c_client(dev);
+	struct mxt_data *data = i2c_get_clientdata(client);
+
+	sprintf(buf,"");
+
+	mxt_read_block(data->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, data), 17, (u8 *) tmp);
+	for (i=0; i<=16; i++){
+		sprintf(tmpstr,"T22 byte[%d] = %d\n",i,tmp[i]);
+		strncat (buf,tmpstr,strlen(tmpstr));
+	}
+	
+	mxt_read_block(data->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, data), 19, (u8 *) tmp);
+	for (i=0; i<=17; i++){
+		sprintf(tmpstr,"T24 byte[%d] = %d\n",i,tmp[i]);
+		strncat (buf,tmpstr,strlen(tmpstr));
+	}
+
+	mxt_read_block(data->client, MXT_BASE_ADDR(MXT_SPT_SELFTEST_T25, data), 9, (u8 *) tmp);
+	for (i=0; i<=8; i++){
+		sprintf(tmpstr,"T25 byte[%d] = %d\n",i,tmp[i]);
+		strncat (buf,tmpstr,strlen(tmpstr));
+	}
+
+	mxt_read_block(data->client, MXT_BASE_ADDR(MXT_PROCI_TWOTOUCHGESTUREPROCESSOR_T27, data), 6, (u8 *) tmp);
+	for (i=0; i<=5; i++){
+		sprintf(tmpstr,"T27 byte[%d] = %d\n",i,tmp[i]);
+		strncat (buf,tmpstr,strlen(tmpstr));
+	}
+
+	mxt_read_block(data->client, MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28, data), 6, (u8 *) tmp);
+	for (i=0; i<=5; i++){
+		sprintf(tmpstr,"T28 by2te[%d] = %d\n",i,tmp[i]);
+		strncat (buf,tmpstr,strlen(tmpstr));
+	}
+
+	mxt_read_block(data->client, MXT_BASE_ADDR(MXT_GRIPSUPPRESSION_T40, data), 5, (u8 *) tmp);
+	for (i=0; i<=4; i++){
+		sprintf(tmpstr,"T40 byte[%d] = %d\n",i,tmp[i]);
+		strncat (buf,tmpstr,strlen(tmpstr));
+	}
+
+	mxt_read_block(data->client, MXT_BASE_ADDR(MXT_PALMSUPPRESSION_T41, data), 6, (u8 *) tmp);
+	for (i=0; i<=5; i++){
+		sprintf(tmpstr,"T41 byte[%d] = %d\n",i,tmp[i]);
+		strncat (buf,tmpstr,strlen(tmpstr));
+	}
+
+	mxt_read_block(data->client, MXT_BASE_ADDR(MXT_DIGITIZER_T43, data), 6, (u8 *) tmp);
+	for (i=0; i<=5; i++){
+		sprintf(tmpstr,"T43 byte[%d] = %d\n",i,tmp[i]);
+		strncat (buf,tmpstr,strlen(tmpstr));
+	}
+	return strlen(buf);
+
+}
 
 static ssize_t show_FW_version(struct device *dev, struct device_attribute *devattr, char *buf)
 {
@@ -465,10 +530,10 @@ static ssize_t store_mode2(struct device *dev, struct device_attribute *devattr,
 	printk("Touch: cfg[0]=%d, cfg[1]=%d, cfg[2]=%d\n",cfg[0],cfg[1],cfg[2]);
 	
 	mxt_write_byte(data->client, MXT_BASE_ADDR(MXT_GEN_COMMANDPROCESSOR_T6, data) + MXT_ADR_T6_BACKUPNV,MXT_CMD_T6_BACKUP);
-	gpio_set_value(TEGRA_GPIO_PQ7, 0);
-	msleep(1);
-	gpio_set_value(TEGRA_GPIO_PQ7, 1);
-	msleep(100);
+	//gpio_set_value(TEGRA_GPIO_PQ7, 0);
+	//msleep(1);
+	//gpio_set_value(TEGRA_GPIO_PQ7, 1);
+	//msleep(100);
 //	mxt_write_byte(data->client,MXT_BASE_ADDR(MXT_GEN_COMMANDPROCESSOR_T6,data) + MXT_ADR_T6_RESET, 1);
 	return count;
 }
@@ -478,11 +543,13 @@ DEVICE_ATTR(d_print, S_IRUGO | S_IWUSR, NULL, store_d_print);
 DEVICE_ATTR(atmel_touchpanel_status, 0755, show_status, NULL);
 DEVICE_ATTR(FW_version, 0755, show_FW_version, NULL);
 DEVICE_ATTR(dump_T7, 0755, dump_T7, NULL);
+DEVICE_ATTR(dump_T22_ep101, 0755, dump_T22, NULL);
 
 static struct attribute *mxt_attr[] = {
 	&dev_attr_d_print.attr,
 	&dev_attr_atmel_touchpanel_status.attr,
 	&dev_attr_dump_T7.attr,
+	&dev_attr_dump_T22_ep101.attr,
 	&dev_attr_FW_version.attr,
 	&dev_attr_cfg_ep101.attr,
 	NULL
@@ -1301,7 +1368,7 @@ static int init_touch_config(struct mxt_data *mxt)
 {
 	int i;
 
-	printk("Touch : init key array register\n");
+	printk("Touch : init key array register in function:%s\n", __func__);
 	mxt_write_byte(mxt->client,MXT_BASE_ADDR(MXT_GEN_COMMANDPROCESSOR_T6, mxt) + MXT_ADR_T6_CALIBRATE, 1);
 
 	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt), 0x41);
@@ -1326,7 +1393,7 @@ static int init_touch_config(struct mxt_data *mxt)
 	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+4, 0x2A);
 	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+5, 0);
 	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+6, 0x10);
-	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+7, 0x3C);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+7, 0x37);
 	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+8, 0x03);
 	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+9, 0x03);
 	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+10, 0);
@@ -1423,6 +1490,162 @@ static int init_touch_config(struct mxt_data *mxt)
 	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28, mxt)+2, 0);
 	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28, mxt)+3, 0x08);
 	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28, mxt)+4, 0x1C);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28, mxt)+5, 0x3C);
+
+for (i=0; i<=63; i++)
+{
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_USER_INFO_T38, mxt)+i, 0);
+}
+
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GRIPSUPPRESSION_T40, mxt), 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GRIPSUPPRESSION_T40, mxt)+1, 0x14);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GRIPSUPPRESSION_T40, mxt)+2, 0x14);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GRIPSUPPRESSION_T40, mxt)+3, 0x14);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GRIPSUPPRESSION_T40, mxt)+4, 0x14);
+
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PALMSUPPRESSION_T41, mxt), 1);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PALMSUPPRESSION_T41, mxt)+1, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PALMSUPPRESSION_T41, mxt)+2, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PALMSUPPRESSION_T41, mxt)+3, 0x23);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PALMSUPPRESSION_T41, mxt)+4, 0x05);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PALMSUPPRESSION_T41, mxt)+5, 0x14);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PALMSUPPRESSION_T41, mxt)+6, 0xAA);
+
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_DIGITIZER_T43, mxt), 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_DIGITIZER_T43, mxt)+1, 0x7D);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_DIGITIZER_T43, mxt)+2, 0x5C);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_DIGITIZER_T43, mxt)+3, 0x05);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_DIGITIZER_T43, mxt)+4, 0x89);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_DIGITIZER_T43, mxt)+5, 0x08);
+	return 0;
+}
+static int init_touch_config_wintek(struct mxt_data *mxt)
+{
+	int i;
+
+	printk("Touch : init key array register in function:%s\n", __func__);
+	mxt_write_byte(mxt->client,MXT_BASE_ADDR(MXT_GEN_COMMANDPROCESSOR_T6, mxt) + MXT_ADR_T6_CALIBRATE, 1);
+
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt), 0x41);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt)+1, 0xFF);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt)+2, 0x32);
+
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt), 0x0A);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+1, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+2, 0x0A);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+3, 0x05);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+4, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+5, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+6, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+7, 0x01);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+8, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+9, 0);
+
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt), 0x8F);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+1, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+2, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+3, 0x1C);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+4, 0x2A);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+5, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+6, 0x10);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+7, 0x37);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+8, 0x03);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+9, 0x03);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+10, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+11, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+12, 0x03);//3
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+13, 0x0E);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+14, 0x0A);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+15, 0x14);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+16, 0x14);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+17, 0x0A);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+18, 0x1F);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+19, 0x03);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+20, 0xFF);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+21, 0x04);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+22, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+23, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+24, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+25, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+26, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+27, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+28, 0x40);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+29, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+30, 0x0A);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+31, 0x0F);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+32, 0x31);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+33, 0x34);
+
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt), 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+1, 0x07);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+2, 0x29);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+3, 0x0E);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+4, 0x01);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+5, 0x01);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+6, 0x10);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+7, 0x32);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+8, 2);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+9, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+10,0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+11, 0); // this instance 1 of T15 is 0
+      
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_COMMSCONFIG_T18, mxt),0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_COMMSCONFIG_T18, mxt)+1,0);
+
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt), 0x05);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+1, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+2, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+3, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+4, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+5, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+8, 0x20);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+9, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+10, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+11, 0x07);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+12, 0x0C);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+13, 0x11);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+14, 0x16);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+15, 0x1B);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+16, 0);
+
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, mxt), 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, mxt)+1, 0x04);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, mxt)+2, 0xFF);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, mxt)+3, 0x03);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, mxt)+4, 0x3F);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, mxt)+5, 0x64);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, mxt)+6, 0x64);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, mxt)+7, 0x01);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, mxt)+8, 0x0A);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, mxt)+9, 0x14);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, mxt)+10, 0x28);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, mxt)+11, 0x4B);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, mxt)+13, 0x02);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, mxt)+15, 0x64);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_ONETOUCHGESTUREPROCESSOR_T24, mxt)+17, 0x19);
+
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_SELFTEST_T25, mxt), 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_SELFTEST_T25, mxt)+1, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_SELFTEST_T25, mxt)+2, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_SELFTEST_T25, mxt)+3, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_SELFTEST_T25, mxt)+4, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_SELFTEST_T25, mxt)+5, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_SELFTEST_T25, mxt)+6, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_SELFTEST_T25, mxt)+7, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_SELFTEST_T25, mxt)+8, 0);
+
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_TWOTOUCHGESTUREPROCESSOR_T27, mxt), 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_TWOTOUCHGESTUREPROCESSOR_T27, mxt)+1, 0x01);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_TWOTOUCHGESTUREPROCESSOR_T27, mxt)+2, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_TWOTOUCHGESTUREPROCESSOR_T27, mxt)+3, 0xE0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_TWOTOUCHGESTUREPROCESSOR_T27, mxt)+4, 0x03);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_PROCI_TWOTOUCHGESTUREPROCESSOR_T27, mxt)+5, 0x23);
+
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28, mxt), 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28, mxt)+1, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28, mxt)+2, 0);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28, mxt)+3, 0x10);
+	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28, mxt)+4, 0x10);
 	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28, mxt)+5, 0x3C);
 
 for (i=0; i<=63; i++)
@@ -1594,7 +1817,7 @@ void process_T9_message(u8 *message, struct mxt_data *mxt, int last_touch)
 							mxt_write_byte(mxt_client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, globe_mxt)+7, 0x01);
 							mxt_write_byte(mxt_client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, globe_mxt)+8, 0);
 							mxt_write_byte(mxt_client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, globe_mxt)+9, 0);
-							mxt_write_byte(mxt_client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, globe_mxt)+7, 0x3C);
+							mxt_write_byte(mxt_client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, globe_mxt)+7, 0x37);
 							mxt_write_byte(mxt_client, MXT_BASE_ADDR(MXT_PALMSUPPRESSION_T41, globe_mxt), 1);
 							printk("Touch: disable T8 config, delta x= %d, delta y = %d\n",del_x,del_y);
 							resume_flag=false;
@@ -1656,13 +1879,13 @@ int process_message(u8 *message, u8 object, struct mxt_data *mxt)
 		cfg_crc= buf[2] << 16 | buf[1] <<8 | buf[0];
 		printk("Touch: configuration checksum is %lx\n",cfg_crc);
 
-		if (cfg_crc != DEFAULT_CONFIG_CHECHSUM){
+		if (cfg_crc != touch_config_checksum){
 			printk("Touch: start BACKUP\n");
 			mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_COMMANDPROCESSOR_T6, mxt) + MXT_ADR_T6_BACKUPNV,MXT_CMD_T6_BACKUP);
-			gpio_set_value(TEGRA_GPIO_PQ7, 0);
-			msleep(1);
-			gpio_set_value(TEGRA_GPIO_PQ7, 1);
-			msleep(100);
+			//gpio_set_value(TEGRA_GPIO_PQ7, 0);
+			//msleep(1);
+			//gpio_set_value(TEGRA_GPIO_PQ7, 1);
+			//msleep(100);
 			}
 		else
 			printk("Touch: config is BACKUP already\n");
@@ -1865,6 +2088,12 @@ int process_message(u8 *message, u8 object, struct mxt_data *mxt)
 	return 0;
 }
 
+static void setInterruptable(struct i2c_client *client, bool interrupt){
+    struct mxt_data *mxt = i2c_get_clientdata(client);
+    down(&mxt->sem);
+    mxt->interruptable = interrupt;
+    up(&mxt->sem);
+}
 /*
  * Processes messages when the interrupt line (CHG) is asserted. Keeps
  * reading messages until a message with report ID 0xFF is received,
@@ -1898,11 +2127,13 @@ static void mxt_worker(struct work_struct *work)
 		message = kmalloc(message_length, GFP_KERNEL);
 		if (message == NULL) {
 			dev_err(&client->dev, "Error allocating memory\n");
+			setInterruptable(client, false);
 			return;
 		}
 	} else {
 		dev_err(&client->dev,
 			"Message length larger than 256 bytes not supported\n");
+		setInterruptable(client, false);
 		return;
 	}
 
@@ -1924,6 +2155,7 @@ static void mxt_worker(struct work_struct *work)
 		}
 		if (error < 0) {
 			kfree(message);
+			setInterruptable(client, false);
 			return;
 		}
 
@@ -1942,6 +2174,7 @@ static void mxt_worker(struct work_struct *work)
 				dev_err(&client->dev,
 					"Error allocating memory\n");
 				kfree(message);
+				setInterruptable(client, false);
 				return;
 			}
 			message_start = message_string;
@@ -2002,6 +2235,67 @@ static irqreturn_t mxt_irq_handler(int irq, void *_mxt)
 	return IRQ_HANDLED;
 }
 
+static int recovery_from_bootMode(struct i2c_client *client){
+    u8 buf[MXT_ID_BLOCK_SIZE];
+    int ret;
+    int identified;
+    int retry = 40;
+    int times;
+    unsigned char data[] = {0x01, 0x01};
+    struct i2c_msg wmsg;
+    
+    wmsg.addr = 0x35;
+    wmsg.flags = I2C_M_WR;
+    wmsg.len = 2;
+    wmsg.buf = data;
+    dev_err(&client->dev, "---------Touch: Try to leave the bootloader mode!\n");
+	/*Write two nosense bytes to I2C address "0x35" in order to force touch to leave the bootloader mode.*/
+    i2c_transfer(client->adapter, &wmsg, 1);
+    mdelay(10);
+	
+    /* Read Device info to check if chip is valid */
+    for(times = 0; times < retry; times++ ){
+        ret = mxt_read_block(client, MXT_ADDR_INFO_BLOCK, MXT_ID_BLOCK_SIZE, (u8 *) buf); 
+	  if(ret >= 0)
+	      break;
+
+	  dev_err(&client->dev, "Retry addressing I2C address 0x%02X with %d times\n", client->addr,times+1); 	 
+	  msleep(25);
+    }	
+	
+    if(ret >= 0){
+        dev_err(&client->dev, "---------Touch: Successfully leave the bootloader mode!\n");
+		ret = 0;
+    }    
+    return ret;
+}
+
+static bool isInBootLoaderMode(struct i2c_client *client){
+    u8 buf[2];
+	int ret;
+	int identified;
+	int retry = 2;
+	int times;
+	struct i2c_msg rmsg;
+
+	rmsg.addr=0x35;
+	rmsg.flags = I2C_M_RD;
+	rmsg.len = 2;
+	rmsg.buf = buf;
+	
+    /* Read 2 byte from boot loader I2C address to make sure touch chip is in bootloader mode */   
+	for(times = 0; times < retry; times++ ){
+	     ret = i2c_transfer(client->adapter, &rmsg, 1); 
+	     if(ret >= 0)
+		 	break;
+		 	  	 
+	     msleep(25);
+	}
+	dev_err(&client->dev, "The touch is %s in bootloader mode.\n", (ret < 0 ? "not" : "indeed"));
+	return ret >= 0;
+}
+
+
 /******************************************************************************/
 /* Initialization of driver                                                   */
 /******************************************************************************/
@@ -2017,6 +2311,8 @@ static int __devinit mxt_identify(struct i2c_client *client,
       
 	identified = 0;
 
+        if(isInBootLoaderMode(client)) 
+             recovery_from_bootMode(client);
 	/* Read Device info to check if chip is valid */
        for(times = 0; times < retry; times++ ){
 	     error = mxt_read_block(client, MXT_ADDR_INFO_BLOCK, MXT_ID_BLOCK_SIZE,
@@ -2592,6 +2888,8 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	__set_bit(EV_KEY, input->evbit);
 
 	mxt_debug(DEBUG_TRACE, "maXTouch driver setting client data\n");
+	sema_init(&mxt->sem, 1); 
+	mxt->interruptable = true;
 	i2c_set_clientdata(client, mxt);
 	mxt->status = 0;
 	mxt_debug(DEBUG_TRACE, "maXTouch driver setting drv data\n");
@@ -2606,7 +2904,13 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	error = mxt_read_object_table(client, mxt, id_data);
 	if (error < 0)
 		goto err_read_ot;
-	init_touch_config(mxt);
+	if(ASUSCheckTouchVendor(TOUCH_VENDOR_SINTEK)){
+	    touch_config_checksum = DEFAULT_CONFIG_CHECKSUM_SINTEK;
+	    init_touch_config(mxt);
+	} else{
+	    touch_config_checksum = DEFAULT_CONFIG_CHECKSUM_WINTEK;;
+	    init_touch_config_wintek(mxt);
+	}
 
 	/* Create debugfs entries. */
 	mxt->debug_dir = debugfs_create_dir("maXTouch", NULL);
@@ -2787,7 +3091,7 @@ static int __devexit mxt_remove(struct i2c_client *client)
 static void mxt_start(struct mxt_data *mxt)
 {
 	mxt_write_byte(mxt->client,
-		MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt), suspend_config_T9);
+		MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt), 0x8F);
 }
 
 static void mxt_stop(struct mxt_data *mxt)
@@ -2859,10 +3163,12 @@ static int mxt_resume(struct i2c_client *client)
 	printk("Atmel touch resume\n");
 	struct mxt_data *mxt = i2c_get_clientdata(client);
 	int chg_retry=0;
+        int error;
+        u8 buf[1];
 
 	if (!suspend_flag)
 		return 0;
-
+        
 	printk("Touch: force reset by PQ7 \n");
 	gpio_direction_output(TEGRA_GPIO_PQ7, 0);
 	printk("Touch: PQ7 is %d\n",gpio_get_value(TEGRA_GPIO_PQ7));
@@ -2882,6 +3188,10 @@ static int mxt_resume(struct i2c_client *client)
 
 	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_USER_INFO_T38, mxt), 0);
 	msleep(25);
+	error = mxt_read_block(client, MXT_BASE_ADDR(MXT_USER_INFO_T38, mxt), 1, buf);
+	if(error < 0 && isInBootLoaderMode(client)) // start boot loader recovery mode
+            recovery_from_bootMode(client);
+
 	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt), 0x41);
 	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt) + 1, 0xFF);
 	mxt_write_byte(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+ 6, 0x05);
@@ -2900,6 +3210,11 @@ static int mxt_resume(struct i2c_client *client)
 	resume_flag = true;
 	delta_flag = true;
 	enable_irq(mxt->irq);
+	if(!mxt->interruptable){
+	    enable_irq(mxt->irq);
+	    setInterruptable(client, true);
+	}
+	    	
 	return 0;
 }
 #else
@@ -2923,8 +3238,8 @@ static struct i2c_driver mxt_driver = {
 	.id_table = mxt_idtable,
 	.probe = mxt_probe,
 	.remove = __devexit_p(mxt_remove),
-	.suspend = mxt_suspend,
-	.resume = mxt_resume,
+	//.suspend = mxt_suspend,
+	//.resume = mxt_resume,
 
 };
 

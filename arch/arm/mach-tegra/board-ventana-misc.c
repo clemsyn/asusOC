@@ -60,15 +60,8 @@ unsigned int ASUSGetProjectID()
 	ret = HW_DRF_VAL(TEGRA_DEVKIT, MISC_HW, PROJECT, ventana_hw);
 	switch (ret) {
 	case 0: //TF101(EP101)
-		ret = 101;
-		break;
-	case 1: //TBD
-		pr_err("[MISC]: Undefined project identification.\n");
-		ret = 0;
-		break;
-	case 2: //SL101(EP102)
-	case 3: //JN101(EP103)
-		ret = 100 + ret;
+	case 1: //SL101(EP102)
+		ret += 101;
 		break;
 	default:
 		pr_err("[MISC]: Illegal project identification.\n");
@@ -83,7 +76,7 @@ unsigned int ASUS3GAvailable()
 {
 	unsigned int ret = 0;
 
-	if (HW_DRF_VAL(TEGRA_DEVKIT, MISC_HW, PROJECT, ventana_hw) != 1) {
+	if (HW_DRF_VAL(TEGRA_DEVKIT, MISC_HW, PROJECT, ventana_hw) < 2) {
 		//All valid projects (TF101/SL101/JN101) have 3G SKU definition
 		return HW_DRF_VAL(TEGRA_DEVKIT, MISC_HW, SKU, ventana_hw);
 	}
@@ -97,8 +90,8 @@ unsigned int ASUSCheckWLANVendor(unsigned int vendor)
 {
 	unsigned int ret = 0;
 
-	if (HW_DRF_VAL(TEGRA_DEVKIT, MISC_HW, PROJECT, ventana_hw) != 1) {
-		//All valid projects (TF101/SL101/JN101) have BT/WLAN module
+	if (HW_DRF_VAL(TEGRA_DEVKIT, MISC_HW, PROJECT, ventana_hw) < 2) {
+		//All valid projects (TF101/SL101) have BT/WLAN module
 		//definition
 		switch (vendor) {
 		case BT_WLAN_VENDOR_MURATA:
@@ -117,6 +110,31 @@ unsigned int ASUSCheckWLANVendor(unsigned int vendor)
 	return ret;
 }
 EXPORT_SYMBOL(ASUSCheckWLANVendor);
+
+unsigned int ASUSCheckTouchVendor(unsigned int vendor)
+{
+	unsigned int ret = 0;
+
+	if (HW_DRF_VAL(TEGRA_DEVKIT, MISC_HW, PROJECT, ventana_hw) < 2) {
+		//All valid projects (TF101/SL101) have touch panel module
+		//definition
+		switch (vendor) {
+		case TOUCH_VENDOR_SINTEK:
+			ret = HW_DRF_VAL(TEGRA_DEVKIT, MISC_HW, TOUCH,
+				ventana_hw) ? 0 : 1;
+			break;
+		case TOUCH_VENDOR_WINTEK:
+			ret = HW_DRF_VAL(TEGRA_DEVKIT, MISC_HW, TOUCH,
+				ventana_hw) ? 1 : 0;
+			break;
+		default:
+			pr_err("[MISC]: Check TOUCH with undefined vendor.\n");
+		}
+        }
+
+	return ret;
+}
+EXPORT_SYMBOL(ASUSCheckTouchVendor);
 
 static ssize_t ventana_hw_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
@@ -187,7 +205,7 @@ static ssize_t ventana_debug_store(struct kobject *kobj,
 	}
 	else if ((!strncmp(buf, "OFF", strlen("OFF"))) && first_attempt) {
 		first_attempt = 0;
-		if (!g_NvBootArgsGPSPreemption); {
+		if (!g_NvBootArgsGPSPreemption) {
 			pr_info("[MISC]: Forbid GPS preemption\n");
 			return ret;
 		}
@@ -289,3 +307,4 @@ fail_platform_add_device:
 fail_platform_device:
 	return ret;
 }
+

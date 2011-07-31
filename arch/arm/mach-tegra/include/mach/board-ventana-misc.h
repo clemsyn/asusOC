@@ -25,28 +25,26 @@
 //
 //    PCB_ID[3:0] =  3    2    1    0
 //                  +-----------------+
-//                  |PRJ[1:0]|SKU[1:0]|
+//                  |PRJ[0]| SKU[2:0] |
 //                  +-----------------+
-//    PRJ[1:0]           SKU[1:0]
-//    00b -> TF101       00b -> W/O 3G, Murata BT/WLAN
-//    00b -> TF101       01b -> 3G, Murata BT/WLAN
-//    00b -> TF101       10b -> W/O 3G, AZW BT/WLAN
-//    00b -> TF101       11b -> 3G, AZW BT/WLAN
+//    PRJ[0]                    SKU[2:0]
+//    0b -> TF101(SINTEK)       000b -> W/O 3G, Murata BT/WLAN
+//    0b -> TF101(SINTEK)       001b -> 3G, Murata BT/WLAN
+//    0b -> TF101(SINTEK)       010b -> W/O 3G, AZW BT/WLAN
+//    0b -> TF101(SINTEK)       011b -> 3G, AZW BT/WLAN
+//    0b -> TF101(WINTEK)       100b -> W/O 3G, Murata BT/WLAN
+//    0b -> TF101(WINTEK)       101b -> 3G, Murata BT/WLAN
+//    0b -> TF101(WINTEK)       110b -> W/O 3G, AZW BT/WLAN
+//    0b -> TF101(WINTEK)       111b -> 3G, AZW BT/WLAN
 //
-//    01b -> TBD         00b -> TBD
-//    01b -> TBD         01b -> TBD
-//    01b -> TBD         10b -> TBD
-//    01b -> TBD         11b -> TBD
-//
-//    10b -> SL101       00b -> W/O 3G, Murata BT/WLAN
-//    10b -> SL101       01b -> 3G, Murata BT/WLAN
-//    10b -> SL101       10b -> W/O 3G, AZW BT/WLAN
-//    10b -> SL101       11b -> 3G, AZW BT/WLAN
-//
-//    11b -> JN101       00b -> W/O 3G, Murata BT/WLAN
-//    11b -> JN101       01b -> 3G, Murata BT/WLAN
-//    11b -> JN101       10b -> W/O 3G, AZW BT/WLAN
-//    11b -> JN101       11b -> 3G, AZW BT/WLAN
+//    1b -> SL101(SINTEK)       000b -> W/O 3G, Murata BT/WLAN
+//    1b -> SL101(SINTEK)       001b -> 3G, Murata BT/WLAN
+//    1b -> SL101(SINTEK)       010b -> W/O 3G, AZW BT/WLAN
+//    1b -> SL101(SINTEK)       011b -> 3G, AZW BT/WLAN
+//    1b -> SL101(WINTEK)       100b -> W/O 3G, Murata BT/WLAN
+//    1b -> SL101(WINTEK)       101b -> 3G, Murata BT/WLAN
+//    1b -> SL101(WINTEK)       110b -> W/O 3G, AZW BT/WLAN
+//    1b -> SL101(WINTEK)       111b -> 3G, AZW BT/WLAN
 //
 #ifndef ASUS_TEGRA_DEVKIT_MISC_HW_H
 #define ASUS_TEGRA_DEVKIT_MISC_HW_H
@@ -110,13 +108,15 @@ extern "C"
 #define TEGRA_DEVKIT_MISC_HW_0_VENDOR_DEFAULT   0x0UL //Murata BT/WLAN
 #define TEGRA_DEVKIT_MISC_HW_0_VENDOR_1         0x1UL //AZW BT/WLAN
 
+//Touch Panel Vendor
+#define TEGRA_DEVKIT_MISC_HW_0_TOUCH_RANGE      6:6
+#define TEGRA_DEVKIT_MISC_HW_0_TOUCH_DEFAULT    0x0UL //SINTEK
+#define TEGRA_DEVKIT_MISC_HW_0_TOUCH_1          0x1UL //WINTEK
 
 //Project Identification
-#define TEGRA_DEVKIT_MISC_HW_0_PROJECT_RANGE    7:6
+#define TEGRA_DEVKIT_MISC_HW_0_PROJECT_RANGE    7:7
 #define TEGRA_DEVKIT_MISC_HW_0_PROJECT_DEFAULT  0x0UL //TF101(EP101)
-#define TEGRA_DEVKIT_MISC_HW_0_PROJECT_1        0x1UL //TBD
-#define TEGRA_DEVKIT_MISC_HW_0_PROJECT_2        0x2UL //SL101(EP102)
-#define TEGAR_DEVKIT_MISC_HW_0_PROJECT_3        0x3UL //JN101(EP103)
+#define TEGRA_DEVKIT_MISC_HW_0_PROJECT_1        0x1UL //SL101(EP102)
 
 
 //The byte-field definition of Tegra2 ReservedOdm fuse is defined as follows
@@ -163,9 +163,21 @@ unsigned int ASUS3GAvailable(void);
  */
 unsigned int ASUSCheckWLANVendor(unsigned int vendor);
 
+
+#define TOUCH_VENDOR_SINTEK		TEGRA_DEVKIT_MISC_HW_0_TOUCH_DEFAULT
+#define TOUCH_VENDOR_WINTEK		TEGRA_DEVKIT_MISC_HW_0_TOUCH_1
+/* Check if Touch module vendor is equipped
+ *   @param v module name
+ *   @ret unsigned int
+ *      If specified touch panel vendor is equipped, 1 will be returned;
+ *      Otherwise, 0 will be instead.
+ */
+unsigned int ASUSCheckTouchVendor(unsigned int vendor);
+
 #if defined(__cplusplus)
 }
 #endif
 
 #endif
+
 

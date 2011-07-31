@@ -718,6 +718,7 @@ extern struct timer_list suspend_timer;
 extern void suspend_worker_timeout(unsigned long data);
 extern void watchdog_enable(int sec);
 extern void watchdog_disable(void);
+extern void auto_dump_kernel_log(void);
 static int tegra_suspend_enter(suspend_state_t state)
 {
 	struct irq_desc *desc;
@@ -806,6 +807,7 @@ static int tegra_suspend_enter(suspend_state_t state)
 		tegra_timer_resume();
 		tegra_pinmux_resume();
 		tegra_debug_uart_resume();
+                tegra_ahbgizmo_resume();
 		tegra_dma_resume();
 		tegra_irq_resume();
 	}
@@ -829,6 +831,7 @@ static int tegra_suspend_enter(suspend_state_t state)
 		suspend_timer.function = suspend_worker_timeout;
 		add_timer(&suspend_timer);
 		watchdog_enable(10);
+                             auto_dump_kernel_log();
      }
 	return 0;
 }

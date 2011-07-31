@@ -65,6 +65,7 @@ static const struct i2c_device_id fm34_id[] = {
 struct i2c_client *fm34_client;
 struct fm34_chip *dsp_chip;
 bool bConfigured=false;
+int PID=0;
 
 MODULE_DEVICE_TABLE(i2c, fm34_id);
 
@@ -101,6 +102,9 @@ int fm34_config_DSP(void)
 	u8 *config_table;
 
 	if(!bConfigured){
+		fm34_reset_DSP();
+		msleep(100);
+
 		gpio_set_value(TEGRA_GPIO_PH3, 1); // Enable DSP
 		msleep(20);
 
@@ -115,17 +119,22 @@ int fm34_config_DSP(void)
 		ret = i2c_transfer(dsp_chip->client->adapter, msg, 1);
 		if(ret < 0){
 			FM34_INFO("DSP NOack, Failed to read 0x%x: %d\n", buf1, ret);
+			msleep(50);
+			fm34_reset_DSP();
 			return ret;
 		}
 		else
 			FM34_INFO("DSP ACK,  read 0x%x: %d\n", buf1, ret);
 
-		fm34_reset_DSP();
-		msleep(100);
-
-		FM34_INFO("Load DSP parameters\n");
-		config_length= sizeof(input_parameter);
-		config_table= (u8 *)input_parameter;
+		if(PID==101){
+			FM34_INFO("Load TF101 DSP parameters\n");
+			config_length= sizeof(input_parameter);
+			config_table= (u8 *)input_parameter;
+		}else if(PID==102){
+			FM34_INFO("Load SL101 DSP parameters\n");
+			config_length= sizeof(input_parameter_SL101);
+			config_table= (u8 *)input_parameter_SL101;
+		}
 
 		ret = i2c_master_send(dsp_chip->client, config_table, config_length);
 		FM34_INFO("config_length = %d\n", config_length);
@@ -230,18 +239,26 @@ long fm34_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 			switch(arg){
 				case START_RECORDING:
-					if(jack_alive){
-						FM34_INFO("Start recording(AMIC), bypass DSP\n");
-						gpio_set_value(TEGRA_GPIO_PH3, 1);
-						msleep(10);
-						ret = i2c_master_send(dsp_chip->client, (u8 *)bypass_parameter, sizeof(bypass_parameter));
-						msleep(5);
-						gpio_set_value(TEGRA_GPIO_PH3, 0);
-					}else{
-						FM34_INFO("Start recording(DMIC), enable DSP\n");
-						gpio_set_value(TEGRA_GPIO_PH3, 1);
-						msleep(10);
-						ret = i2c_master_send(dsp_chip->client, (u8 *)enable_parameter, sizeof(enable_parameter));
+					gpio_set_value(TEGRA_GPIO_PH3, 1);
+					msleep(10);
+					if(jack_alive){/*Headset mode*/
+						if(PID==101){
+							FM34_INFO("Start recording(AMIC), bypass DSP\n");
+							ret = i2c_master_send(dsp_chip->client, (u8 *)bypass_parameter, sizeof(bypass_parameter));
+							msleep(5);
+							gpio_set_value(TEGRA_GPIO_PH3, 0);
+						}else if(PID==102){
+							FM34_INFO("Start recording(AMIC, SL101), enable DSP\n");
+							ret = i2c_master_send(dsp_chip->client, (u8 *)enable_parameter_SL101_headset, sizeof(enable_parameter_SL101_headset));
+						}
+					}else{/*Handsfree mode*/
+						if(PID==101){
+							FM34_INFO("Start recording(DMIC), enable DSP\n");
+							ret = i2c_master_send(dsp_chip->client, (u8 *)enable_parameter, sizeof(enable_parameter));
+						}else if(PID==102){
+							FM34_INFO("Start recording(DMIC, SL101), enable DSP\n");
+							ret = i2c_master_send(dsp_chip->client, (u8 *)enable_parameter_SL101_default, sizeof(enable_parameter_SL101_default));
+						}
 					}
 					recording_enabled = START_RECORDING;
 					hs_micbias_power(1);
@@ -343,7 +360,6 @@ static int fm34_probe(struct i2c_client *client,
 	data->status = 1;
 
 	bConfigured=false;
-	fm34_config_DSP();
 
 	pr_info("%s()\n", __func__);
 
@@ -379,7 +395,7 @@ void fm34_reconfig(void)
 static int fm34_suspend(struct i2c_client *client, pm_message_t mesg)
 {
 	printk("fm34_suspend+\n");
-	gpio_set_value(TEGRA_GPIO_PH3, 0); // Bypass DSP
+	gpio_set_value(TEGRA_GPIO_PH3, 0); /* Bypass DSP*/
 	printk("fm34_suspend-\n");
 	return 0;
 }
@@ -393,6 +409,12 @@ static int fm34_resume(struct i2c_client *client)
 static int __init fm34_init(void)
 {
 	pr_info("%s()\n", __func__);
+
+	if(ASUSGetProjectID() == 101)
+		PID=101;/*TF 101*/
+	else if(ASUSGetProjectID() == 102)
+		PID=102;/*SL 101*/
+
 	return i2c_add_driver(&fm34_driver);
 }
 

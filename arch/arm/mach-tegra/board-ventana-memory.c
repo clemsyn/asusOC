@@ -23,9 +23,9 @@
 #include "tegra2_emc.h"
 #include "board.h"
 #include <mach/board-ventana-misc.h>
-static const struct tegra_emc_table ventana_emc_tables_elpida_300Mhz[] = {
+static const struct tegra_emc_table ventana_emc_tables_elpida_300Mhz[] =  {
 	{
-		.rate = 25000,   /* SDRAM frquency */
+		.rate = 25000,   /* SDRAM frequency */
 		.regs = {
 			0x00000002,   /* RC */
 			0x00000006,   /* RFC */
@@ -59,13 +59,13 @@ static const struct tegra_emc_table ventana_emc_tables_elpida_300Mhz[] = {
 			0x00000006,   /* TCLKSTABLE */
 			0x00000002,   /* TCLKSTOP */
 			0x00000068,   /* TREFBW */
-			0x00000003,   /* QUSE_EXTRA */
+			0x00000000,   /* QUSE_EXTRA */
 			0x00000003,   /* FBIO_CFG6 */
 			0x00000000,   /* ODT_WRITE */
 			0x00000000,   /* ODT_READ */
-			0x00000082,   /* FBIO_CFG5 */
-			0xa09404ae,   /* CFG_DIG_DLL */
-			0x0001f000,   /* DLL_XFORM_DQS */
+			0x00000282,   /* FBIO_CFG5 */
+			0xa0ae04ae,   /* CFG_DIG_DLL */
+			0x00070000,    /* DLL_XFORM_DQS */
 			0x00000000,   /* DLL_XFORM_QUSE */
 			0x00000000,   /* ZCAL_REF_CNT */
 			0x00000003,   /* ZCAL_WAIT_CNT */
@@ -110,13 +110,13 @@ static const struct tegra_emc_table ventana_emc_tables_elpida_300Mhz[] = {
 			0x00000006,   /* TCLKSTABLE */
 			0x00000002,   /* TCLKSTOP */
 			0x000000d0,   /* TREFBW */
-			0x00000004,   /* QUSE_EXTRA */
+			0x00000000,   /* QUSE_EXTRA */
 			0x00000000,   /* FBIO_CFG6 */
 			0x00000000,   /* ODT_WRITE */
 			0x00000000,   /* ODT_READ */
-			0x00000082,   /* FBIO_CFG5 */
-			0xa09404ae,   /* CFG_DIG_DLL */
-			0x0001f000,   /* DLL_XFORM_DQS */
+			0x00000282,   /* FBIO_CFG5 */
+			0xa0ae04ae,   /* CFG_DIG_DLL */
+			0x00070000,   /* DLL_XFORM_DQS */
 			0x00000000,   /* DLL_XFORM_QUSE */
 			0x00000000,   /* ZCAL_REF_CNT */
 			0x00000005,   /* ZCAL_WAIT_CNT */
@@ -161,13 +161,13 @@ static const struct tegra_emc_table ventana_emc_tables_elpida_300Mhz[] = {
 			0x00000006,   /* TCLKSTABLE */
 			0x00000002,   /* TCLKSTOP */
 			0x00000138,   /* TREFBW */
-			0x00000004,   /* QUSE_EXTRA */
+			0x00000000,   /* QUSE_EXTRA */
 			0x00000000,   /* FBIO_CFG6 */
 			0x00000000,   /* ODT_WRITE */
 			0x00000000,   /* ODT_READ */
-			0x00000082,   /* FBIO_CFG5 */
-			0xa09404ae,   /* CFG_DIG_DLL */
-			0x0001f000,   /* DLL_XFORM_DQS */
+			0x00000282,   /* FBIO_CFG5 */
+			0xa0ae04ae,   /* CFG_DIG_DLL */
+			0x00070000,   /* DLL_XFORM_DQS */
 			0x00000000,   /* DLL_XFORM_QUSE */
 			0x00000000,   /* ZCAL_REF_CNT */
 			0x00000007,   /* ZCAL_WAIT_CNT */
@@ -212,13 +212,13 @@ static const struct tegra_emc_table ventana_emc_tables_elpida_300Mhz[] = {
 			0x00000006,   /* TCLKSTABLE */
 			0x00000002,   /* TCLKSTOP */
 			0x00000270,   /* TREFBW */
-			0x00000004,   /* QUSE_EXTRA */
+			0x00000000,   /* QUSE_EXTRA */
 			0x00000001,   /* FBIO_CFG6 */
 			0x00000000,   /* ODT_WRITE */
 			0x00000000,   /* ODT_READ */
-			0x00000082,   /* FBIO_CFG5 */
-			0xA06804AE,   /* CFG_DIG_DLL */
-			0x007FD010,   /* DLL_XFORM_DQS */
+			0x00000282,   /* FBIO_CFG5 */
+			0xA07c04AE,   /* CFG_DIG_DLL */
+			0x007dc010,   /* DLL_XFORM_DQS */
 			0x00000000,   /* DLL_XFORM_QUSE */
 			0x00000000,   /* ZCAL_REF_CNT */
 			0x0000000e,   /* ZCAL_WAIT_CNT */
@@ -268,8 +268,8 @@ static const struct tegra_emc_table ventana_emc_tables_elpida_300Mhz[] = {
 			0x00000000,   /* ODT_WRITE */
 			0x00000000,   /* ODT_READ */
 			0x00000282,   /* FBIO_CFG5 */
-			0xE04E048B,   /* CFG_DIG_DLL */
-			0x007FA010,   /* DLL_XFORM_DQS */
+			0xE059048B,   /* CFG_DIG_DLL */
+			0x007e0010,   /* DLL_XFORM_DQS */
 			0x00000000,   /* DLL_XFORM_QUSE */
 			0x00000000,   /* ZCAL_REF_CNT */
 			0x0000001B,   /* ZCAL_WAIT_CNT */
@@ -316,12 +316,12 @@ static const struct tegra_emc_table ventana_emc_tables_hynix_300Mhz[] = {
 			0x00000006,   /* TCLKSTABLE */
 			0x00000002,   /* TCLKSTOP */
 			0x00000068,   /* TREFBW */
-			0x00000003,   /* QUSE_EXTRA */
+			0x00000000,   /* QUSE_EXTRA */
 			0x00000003,   /* FBIO_CFG6 */
 			0x00000000,   /* ODT_WRITE */
 			0x00000000,   /* ODT_READ */
-			0x00000082,   /* FBIO_CFG5 */
-			0xa09404ae,   /* CFG_DIG_DLL */
+			0x00000282,   /* FBIO_CFG5 */
+			0xa0ae04ae,   /* CFG_DIG_DLL */
 			0x00070000,   /* DLL_XFORM_DQS */
 			0x00000000,   /* DLL_XFORM_QUSE */
 			0x00000000,   /* ZCAL_REF_CNT */
@@ -367,12 +367,12 @@ static const struct tegra_emc_table ventana_emc_tables_hynix_300Mhz[] = {
 			0x00000006,   /* TCLKSTABLE */
 			0x00000002,   /* TCLKSTOP */
 			0x000000d0,   /* TREFBW */
-			0x00000004,   /* QUSE_EXTRA */
+			0x00000000,   /* QUSE_EXTRA */
 			0x00000000,   /* FBIO_CFG6 */
 			0x00000000,   /* ODT_WRITE */
 			0x00000000,   /* ODT_READ */
-			0x00000082,   /* FBIO_CFG5 */
-			0xa09404ae,   /* CFG_DIG_DLL */
+			0x00000282,   /* FBIO_CFG5 */
+			0xa0ae04ae,   /* CFG_DIG_DLL */
 			0x00070000,   /* DLL_XFORM_DQS */
 			0x00000000,   /* DLL_XFORM_QUSE */
 			0x00000000,   /* ZCAL_REF_CNT */
@@ -418,12 +418,12 @@ static const struct tegra_emc_table ventana_emc_tables_hynix_300Mhz[] = {
 			0x00000006,   /* TCLKSTABLE */
 			0x00000002,   /* TCLKSTOP */
 			0x00000138,   /* TREFBW */
-			0x00000004,   /* QUSE_EXTRA */
+			0x00000000,   /* QUSE_EXTRA */
 			0x00000000,   /* FBIO_CFG6 */
 			0x00000000,   /* ODT_WRITE */
 			0x00000000,   /* ODT_READ */
-			0x00000082,   /* FBIO_CFG5 */
-			0xa09404ae,   /* CFG_DIG_DLL */
+			0x00000282,   /* FBIO_CFG5 */
+			0xa0ae04ae,   /* CFG_DIG_DLL */
 			0x00070000,   /* DLL_XFORM_DQS */
 			0x00000000,   /* DLL_XFORM_QUSE */
 			0x00000000,   /* ZCAL_REF_CNT */
@@ -469,13 +469,13 @@ static const struct tegra_emc_table ventana_emc_tables_hynix_300Mhz[] = {
 			0x00000006,   /* TCLKSTABLE */
 			0x00000002,   /* TCLKSTOP */
 			0x00000270,   /* TREFBW */
-			0x00000004,   /* QUSE_EXTRA */
+			0x00000000,   /* QUSE_EXTRA */
 			0x00000001,   /* FBIO_CFG6 */
 			0x00000000,   /* ODT_WRITE */
 			0x00000000,   /* ODT_READ */
-			0x00000082,   /* FBIO_CFG5 */
-			0xA06804AE,   /* CFG_DIG_DLL */
-			0x007e4010,   /* DLL_XFORM_DQS */
+			0x00000282,   /* FBIO_CFG5 */
+			0xA07C04AE,   /* CFG_DIG_DLL */
+			0x007e8010,   /* DLL_XFORM_DQS */
 			0x00000000,   /* DLL_XFORM_QUSE */
 			0x00000000,   /* ZCAL_REF_CNT */
 			0x0000000e,   /* ZCAL_WAIT_CNT */
@@ -525,8 +525,8 @@ static const struct tegra_emc_table ventana_emc_tables_hynix_300Mhz[] = {
 			0x00000000,   /* ODT_WRITE */
 			0x00000000,   /* ODT_READ */
 			0x00000282,   /* FBIO_CFG5 */
-			0xE04E048B,   /* CFG_DIG_DLL */
-			0x007c8010,   /* DLL_XFORM_DQS */
+			0xE059048B,   /* CFG_DIG_DLL */
+			0x007e4010,   /* DLL_XFORM_DQS */
 			0x00000000,   /* DLL_XFORM_QUSE */
 			0x00000000,   /* ZCAL_REF_CNT */
 			0x0000001B,   /* ZCAL_WAIT_CNT */
@@ -842,7 +842,6 @@ static const struct tegra_emc_chip ASUS_elpida_ventana_emc_chips[] = {
 	},
 };
 #define TEGRA25_SKU		0x0B00
-
 int ventana_emc_init(void)
 {
 	struct board_info BoardInfo;

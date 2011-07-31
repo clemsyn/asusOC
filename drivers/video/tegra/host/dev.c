@@ -42,6 +42,7 @@
 
 static int nvhost_major = NVHOST_MAJOR;
 static int nvhost_minor = NVHOST_CHANNEL_BASE;
+static unsigned int war_count = 0;
 
 struct nvhost_channel_userctx {
 	struct nvhost_channel *ch;
@@ -499,9 +500,9 @@ static int nvhost_ioctl_ctrl_syncpt_incr(
 	return 0;
 }
 
-static int nvhost_ioctl_ctrl_syncpt_wait(
+static int nvhost_ioctl_ctrl_syncpt_waitex(
 	struct nvhost_ctrl_userctx *ctx,
-	struct nvhost_ctrl_syncpt_wait_args *args)
+	struct nvhost_ctrl_syncpt_waitex_args *args)
 {
 	u32 timeout;
 	if (args->id >= NV_HOST1X_SYNCPT_NB_PTS)
@@ -512,7 +513,7 @@ static int nvhost_ioctl_ctrl_syncpt_wait(
 		timeout = (u32)msecs_to_jiffies(args->timeout);
 
 	return nvhost_syncpt_wait_timeout(&ctx->dev->syncpt, args->id,
-					args->thresh, timeout);
+					args->thresh, timeout, &args->value);
 }
 
 static int nvhost_ioctl_ctrl_module_mutex(
@@ -610,7 +611,7 @@ static long nvhost_ctrlctl(struct file *filp,
 		err = nvhost_ioctl_ctrl_syncpt_incr(priv, (void *)buf);
 		break;
 	case NVHOST_IOCTL_CTRL_SYNCPT_WAIT:
-		err = nvhost_ioctl_ctrl_syncpt_wait(priv, (void *)buf);
+		err = nvhost_ioctl_ctrl_syncpt_waitex(priv, (void *)buf);
 		break;
 	case NVHOST_IOCTL_CTRL_MODULE_MUTEX:
 		err = nvhost_ioctl_ctrl_module_mutex(priv, (void *)buf);
@@ -618,6 +619,9 @@ static long nvhost_ctrlctl(struct file *filp,
 	case NVHOST_IOCTL_CTRL_MODULE_REGRDWR:
 		err = nvhost_ioctl_ctrl_module_regrdwr(priv, (void *)buf);
 		break;
+        case NVHOST_IOCTL_CTRL_SYNCPT_WAITEX:
+                err = nvhost_ioctl_ctrl_syncpt_waitex(priv, (void *)buf);
+                break;
 	default:
 		err = -ENOTTY;
 		break;
@@ -807,13 +811,21 @@ static int __exit nvhost_remove(struct platform_device *pdev)
 static int nvhost_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct nvhost_master *host = platform_get_drvdata(pdev);
+        bool ret = false;
+
 	dev_info(&pdev->dev, "suspending\n");
-	nvhost_module_suspend(&host->mod, true);
-	clk_enable(host->mod.clk[0]);
-	nvhost_syncpt_save(&host->syncpt);
-	clk_disable(host->mod.clk[0]);
-	dev_info(&pdev->dev, "suspended\n");
-	return 0;
+	ret = nvhost_module_suspend(&host->mod, true);
+        if (ret == true) {
+                clk_enable(host->mod.clk[0]);
+                nvhost_syncpt_save(&host->syncpt);
+                clk_disable(host->mod.clk[0]);
+                dev_info(&pdev->dev, "suspended\n");
+                return 0;
+        } else {
+                war_count++;
+                printk("nvhost_suspend workaround for \"%s\" is triggerred (count= %d).\n", host->mod.name, war_count);
+                return 1; /* 1 stands for "error". */
+        }           
 }
 
 static int nvhost_resume(struct platform_device *pdev)

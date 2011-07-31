@@ -9,6 +9,7 @@
 #define BATTERY_USB_STATUS  	          _IOR(BATTERY_IOC_MAGIC, 7,int*)
 #define BATTERY_REBOOT_TEST_TOOL      _IOR(BATTERY_IOC_MAGIC, 8,int)
 #define BATTERY_STATUS 	                         _IOR(BATTERY_IOC_MAGIC, 9,int*)
+#define BOOT_REASON	                         _IOR(BATTERY_IOC_MAGIC, 10,int*)
 extern int ready_to_polling;
 #define DACKING_INSTERTION (1<0)
 #define DACKING_BATTERY_HIGHER_10  (1<1)
@@ -17,7 +18,7 @@ extern int ready_to_polling;
 #define START_NORMAL (1)
 #define START_HEAVY (2)
 #define IOCTL_ERROR (-1)
-
+extern unsigned int boot_reason;
 void backlight_enable(bool enable)
 {
     static int old_state=0xFF;
@@ -126,6 +127,10 @@ long battery_ioctl(struct file *filp,unsigned int cmd, unsigned long arg)
 		case BATTERY_STATUS:
 			battery_status=bq20z45_get_fc_bit(&fc);
 			(*(int*)arg)=( fc /*||bq20z45_check_alarm(battery_status)*/|| !bq20z45_get_chargingCurrent()|| !bq20z45_get_chargingCurrent());
+			break;
+		case BOOT_REASON:
+			(*(int*)arg)=boot_reason;
+			printk(" BATTERY: BOOT_REASON=%x\n",(*(int*)arg));
 			break;
 	  default:  /* redundant, as cmd was checked against MAXNR */
 	           printk(" BATTERY: unknow i2c  stress test  command cmd=%x arg=%lu\n",cmd,arg);

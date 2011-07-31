@@ -412,8 +412,11 @@ EXPORT_SYMBOL(global_codec) ;
 extern bool jack_alive;
 extern bool need_spk;
 extern bool lineout_alive;
+extern int mic_type;
 int PRJ_ID;
-EXPORT_SYMBOL(PRJ_ID) ;
+EXPORT_SYMBOL(PRJ_ID);
+int spk_status;
+EXPORT_SYMBOL(spk_status);
 
 struct wm8903_parameters audio_params[]={
 	/* EP101 */
@@ -421,23 +424,24 @@ struct wm8903_parameters audio_params[]={
 		0x3D,	/* Speaker volume: +4dB*/
 		0x37,	/* Headset volume: -2dB*/
 		0xC0,	/* DMIC ADC volume: 0dB*/
-		0x1D,	/* AMIC volume: +19.2dB*/
+		0x05,	/* AMIC volume: +24dB, for differential MIC*/
 	},
 	/* EP102 */
 	{
 		0x39,	/* Speaker volume: +0dB*/
 		0x37,	/* Headset volume: -2dB*/
 		0xC0,	/* DMIC ADC volume: 0dB*/
-		0x1D,	/* AMIC volume: +19.2dB*/
+		0x05,	/* AMIC volume: +24dB, for differential MIC*/
 	},
 };
 EXPORT_SYMBOL(audio_params);
 
 #define AUDIO_IOC_MAGIC	0xf7
-#define AUDIO_IOC_MAXNR	3
+#define AUDIO_IOC_MAXNR	4
 #define AUDIO_STRESS_TEST	_IOW(AUDIO_IOC_MAGIC, 1,int)
 #define AUDIO_DUMP	_IOW(AUDIO_IOC_MAGIC, 2,int)
 #define OUTPUT_POWER_CONTROL	_IOW(AUDIO_IOC_MAGIC, 3,int)
+#define MIC_MUTE_CONTROL	_IOW(AUDIO_IOC_MAGIC, 4,int)
 
 #define AUDIO_IOCTL_START_HEAVY 2
 #define AUDIO_IOCTL_START_NORMAL 1
@@ -450,6 +454,11 @@ EXPORT_SYMBOL(audio_params);
 
 #define AUDIO_POWER_ON 1
 #define AUDIO_POWER_OFF 0
+
+#define D_MIC 0
+#define A_MIC 1
+
+#define MIC_MUTE 1
 
 static ssize_t read_sysfs_codec_status(struct device *dev, struct device_attribute *devattr, char *buf)
 {
@@ -2324,6 +2333,7 @@ int audio_codec_ioctl(struct file *filp,
 {
 	int err = 0;
 	int retval = 0;
+	int CtrlReg = 0;
 
 	if (_IOC_TYPE(cmd) != AUDIO_IOC_MAGIC) return -ENOTTY;
 	if (_IOC_NR(cmd) > AUDIO_IOC_MAXNR) return -ENOTTY;
@@ -2365,6 +2375,7 @@ int audio_codec_ioctl(struct file *filp,
 		case OUTPUT_POWER_CONTROL:
 			if(arg==AUDIO_POWER_ON && need_spk && !lineout_alive){
 			printk("AUDIO_CODEC: Power On\n");
+			spk_status = ENABLE_SPEAKER;
 			snd_soc_write(global_codec, WM8903_POWER_MANAGEMENT_4, 0x0003); /* MIXSPK Enable*/
 			if(PRJ_ID == EP_101){
 			snd_soc_write(global_codec, WM8903_ANALOGUE_OUT3_LEFT, audio_params[EP101].analog_speaker_volume | 0x80); /* SPKL Volume: 4dB*/
@@ -2377,9 +2388,38 @@ int audio_codec_ioctl(struct file *filp,
 			snd_soc_write(global_codec, WM8903_GPIO_CONTROL_3, 0x0033); /* GPIO3 configure: EN_SPK*/
 			}else if(arg==AUDIO_POWER_OFF){
 			printk("AUDIO_CODEC: Power Off\n");
+			spk_status = DISABLE_SPEAKER;
 			snd_soc_write(global_codec, WM8903_POWER_MANAGEMENT_4, 0x0000); /* MIXSPK Disable*/
 			snd_soc_write(global_codec, WM8903_POWER_MANAGEMENT_5, 0x0000); /* SPK Disable*/
 			snd_soc_write(global_codec, WM8903_GPIO_CONTROL_3, 0x0000); /* Mute the speaker */
+			}
+			break;
+
+		case MIC_MUTE_CONTROL:
+			if(arg==MIC_MUTE){
+				if(mic_type==D_MIC){
+					printk("AUDIO_CODEC: DMIC MUTE\n");
+					CtrlReg = (0x0 << 9);
+					snd_soc_write(global_codec, 0xa4, CtrlReg);
+				}else if(mic_type==A_MIC){
+					printk("AUDIO_CODEC: AMIC MUTE\n");
+					CtrlReg = (0x0<<0) | (0x0<<1);
+					snd_soc_write(global_codec, 0x06, CtrlReg);/* Mic Bias disable */
+					CtrlReg = (0x0<<1) | (0x0<<0);
+					snd_soc_write(global_codec, 0x0C, CtrlReg);/* Disable analog inputs */
+				}
+			}else{
+				if(mic_type==D_MIC){
+					printk("AUDIO_CODEC: DMIC UNMUTE\n");
+					CtrlReg = (0x1 << 9);
+					snd_soc_write(global_codec, 0xa4, CtrlReg);
+				}else if(mic_type==A_MIC){
+					printk("AUDIO_CODEC: AMIC UNMUTE\n");
+					CtrlReg = (0x1<<0) | (0x1<<1);
+					snd_soc_write(global_codec, 0x06, CtrlReg);/* Mic Bias enable */
+					CtrlReg = (0x1<<1) | (0x1<<0);/* Enable analog inputs */
+					snd_soc_write(global_codec, 0x0C, CtrlReg);
+				}
 			}
 			break;
 

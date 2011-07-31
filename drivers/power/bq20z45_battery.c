@@ -716,10 +716,13 @@ void docking_callback(void )
        printk("========================================================\n") ;
 	printk("docking_callback  px5=%x ps1=%x \n",gpio_get_value(TEGRA_GPIO_PX5),gpio_get_value(TEGRA_GPIO_PS1) );
        printk("========================================================\n") ;
-      if(!gpio_get_value(TEGRA_GPIO_PX5) && !gpio_get_value(TEGRA_GPIO_PS1))
+      if(!gpio_get_value(TEGRA_GPIO_PX5) && !gpio_get_value(TEGRA_GPIO_PS1)){
 		battery_docking_status=true;
-	  else
+		enable_irq(gpio_to_irq(TEGRA_GPIO_PS1));
+	}else{
 	  	battery_docking_status=false;
+		disable_irq(gpio_to_irq(TEGRA_GPIO_PS1));
+	}
 
      if(battery_work_queue ){
 		 cancel_delayed_work(&bq20z45_device->status_poll_work);
@@ -741,8 +744,12 @@ void   register_docking_charging_irq(void)
 	 rc= request_irq(gpio_to_irq(TEGRA_GPIO_PS1), charger_pad_dock_interrupt, IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING, "dock_charging" , NULL);
 	if (rc < 0)
 	        printk(KERN_ERR"Could not register for TEGRA_GPIO_PS1 interrupt, irq = %d, rc = %d\n", gpio_to_irq(TEGRA_GPIO_PS1), rc);
-        if(!gpio_get_value(TEGRA_GPIO_PX5) && !gpio_get_value(TEGRA_GPIO_PS1))
+
+        if(!gpio_get_value(TEGRA_GPIO_PX5) && !gpio_get_value(TEGRA_GPIO_PS1)){
 			battery_docking_status=true;
+			enable_irq(gpio_to_irq(TEGRA_GPIO_PS1));
+        }else
+		disable_irq(gpio_to_irq(TEGRA_GPIO_PS1));
 	printk(" register_docking_charging_irq  px5=%x ps1=%x \n",gpio_get_value(TEGRA_GPIO_PX5),gpio_get_value(TEGRA_GPIO_PS1) );
 }
 void  setup_5v_chg_en_pin(void)
@@ -760,7 +767,7 @@ static int bq20z45_probe(struct i2c_client *client,
 {
 	int rc;
 	int i=0;
-	printk("bq20z45_probe: client->addr=%x\n",client->addr);
+	printk("bq20z45_probe: client->addr=%x boot_reason=%x\n",client->addr,boot_reason);
 	bq20z45_device = kzalloc(sizeof(*bq20z45_device), GFP_KERNEL);
 	if (!bq20z45_device) {
 		return -ENOMEM;
@@ -900,10 +907,13 @@ static int bq20z45_resume(struct i2c_client *client)
 
       bq20z45_device->battery_present =!(gpio_get_value(bq20z45_device->gpio_battery_detect));
       cancel_delayed_work(&bq20z45_device->status_poll_work);
-      if(!gpio_get_value(TEGRA_GPIO_PX5) && !gpio_get_value(TEGRA_GPIO_PS1))
+      if(!gpio_get_value(TEGRA_GPIO_PX5) && !gpio_get_value(TEGRA_GPIO_PS1)){
 	  battery_docking_status=true;
-	  else
+		enable_irq(gpio_to_irq(TEGRA_GPIO_PS1));
+	}else{
 		battery_docking_status=false;
+		disable_irq(gpio_to_irq(TEGRA_GPIO_PS1));
+	 }
 
 	if(temp_wake_status&TEGRA_WAKE_USB1_VBUS){
 		temp_wake_status&=(~TEGRA_WAKE_USB1_VBUS);

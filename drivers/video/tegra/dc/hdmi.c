@@ -1303,8 +1303,14 @@ static void tegra_dc_hdmi_enable(struct tegra_dc *dc)
 	tegra_dc_writel(dc, GENERAL_ACT_REQ << 8, DC_CMD_STATE_CONTROL);
 	tegra_dc_writel(dc, GENERAL_ACT_REQ, DC_CMD_STATE_CONTROL);
 
-	tegra_nvhdcp_set_plug(hdmi->nvhdcp, 1);
+	if(gpio_get_value(dc->out->hotplug_gpio)) {
+          printk("HDMI is connected. Set HDCP.\n");
+          tegra_nvhdcp_set_plug(hdmi->nvhdcp, 1);
 
+          } else {
+          printk("HDMI is removed?\n");
+          tegra_nvhdcp_set_plug(hdmi->nvhdcp, 0);
+        }
 	switch(hdmi_resolution) {
 	case HDMI_ACTIVE_1920_1080:
 		tegra_hdmi_writel(hdmi, 0x0, HDMI_NV_PDISP_HDMI_AVI_INFOFRAME_STATUS);

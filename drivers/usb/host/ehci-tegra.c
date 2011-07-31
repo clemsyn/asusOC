@@ -23,6 +23,10 @@
 #include <linux/usb/otg.h>
 #include <mach/usb_phy.h>
 #include <mach/iomap.h>
+#include <asm/gpio.h>
+#include <mach/board-ventana-misc.h>
+#include <linux/wakelock.h>
+#include "../../../arch/arm/mach-tegra/clock.h"
 
 #define TEGRA_USB_PORTSC_PHCD			(1 << 23)
 
@@ -35,10 +39,16 @@
 #define TEGRA_USB2_CLK_OVR_ON			(1 << 10)
 
 #define TEGRA_USB_DMA_ALIGN 32
-
 #define STS_SRI	(1<<7)	/*	SOF Recieved	*/
 //add for usb3 suspend sequence before the asusec driver suspend
 extern int asusec_suspend_hub_callback(void);
+void tegra_ehci_usb3_clk_check(void);
+#define TEGRA_GPIO_PX5			189 // DOCK_IN	LOW: dock-in, HIGH: dock disconnected
+static struct clk* usb3_emc_clk = NULL;
+static struct clk* usb3_sclk = NULL;
+static int usb3_emc_sclk_enable = 0;
+static struct wake_lock tegra_ehci_usb3_wake_lock;
+static struct delayed_work usb3_dock_in_workq;
 
 struct tegra_ehci_hcd {
 	struct ehci_hcd *ehci;
@@ -61,6 +71,10 @@ static void tegra_ehci_power_up(struct usb_hcd *hcd)
 
 	clk_enable(tegra->emc_clk);
 	clk_enable(tegra->sclk_clk);
+
+	if(tegra->phy->instance == 2 && ASUSGetProjectID()==101)
+		usb3_emc_sclk_enable = 1;
+
 	clk_enable(tegra->clk);
 	tegra_usb_phy_power_on(tegra->phy);
 	tegra->host_resumed = 1;
@@ -73,8 +87,21 @@ static void tegra_ehci_power_down(struct usb_hcd *hcd)
 	tegra->host_resumed = 0;
 	tegra_usb_phy_power_off(tegra->phy);
 	clk_disable(tegra->clk);
-	clk_disable(tegra->sclk_clk);
-	clk_disable(tegra->emc_clk);
+
+	if(ASUSGetProjectID()==101){
+		if(tegra->phy->instance == 2 && usb3_emc_sclk_enable == 1){
+			clk_disable(tegra->sclk_clk);
+			clk_disable(tegra->emc_clk);
+			usb3_emc_sclk_enable = 0;
+		}else if(tegra->phy->instance != 2){
+			clk_disable(tegra->sclk_clk);
+			clk_disable(tegra->emc_clk);
+		}
+	}else{
+		clk_disable(tegra->sclk_clk);
+		clk_disable(tegra->emc_clk);
+	}
+
 }
 
 static int tegra_ehci_hub_control(
@@ -442,6 +469,9 @@ static int tegra_usb_resume(struct usb_hcd *hcd)
 	}
 
 	tegra_ehci_phy_restore_end(tegra->phy);
+	if(tegra->phy->instance == 2 && ASUSGetProjectID()==101)
+		schedule_delayed_work(&usb3_dock_in_workq, 0.5* HZ);
+
 	printk("tegra_usb_resume-\n");
 	return 0;
 
@@ -459,7 +489,20 @@ restart:
 			schedule_delayed_work(&tegra->work, 50);
 	} else {
 		tegra_ehci_restart(hcd);
+
+		/*Let the version 1.2 of docking diconnect and then connect
+		  *with host controller when system leave LP0.
+		  *The workaround to let the behavior of USB3 devices consistent
+		  *with the 1.3 version of docking.*/
+		if(tegra->phy->instance == 2){
+			val = readl(&hw->port_status[0]);
+			val &= ~(PORT_POWER | PORT_CSC);
+			writel(val, &hw->port_status[0]);
+			udelay(10);
+		}
 	}
+	if(tegra->phy->instance == 2 && ASUSGetProjectID()==101)
+		schedule_delayed_work(&usb3_dock_in_workq, 0.5* HZ);
 	printk("tegra_usb_resume-\n");
 	return 0;
 }
@@ -812,6 +855,83 @@ static const struct hc_driver tegra_ehci_hc_driver = {
 	.port_handed_over	= ehci_port_handed_over,
 };
 
+void tegra_ehci_usb3_clk_check()
+{
+	int gpio = TEGRA_GPIO_PX5;
+	int err = 0;
+
+	printk(KERN_INFO"%s: usb3_emc_clk->refcnt=%u,sclk->refcnt=%u\n",__func__,usb3_emc_clk->refcnt,usb3_sclk->refcnt);
+	if ((gpio_get_value(gpio)==0) && (usb3_emc_sclk_enable == 0)){
+		printk(KERN_INFO"ehci-tegra: Dock detected\n");
+		err = clk_enable(usb3_emc_clk);
+		if(err)
+			printk(KERN_ERR"[ERROR]%s: usb3_emc_clk can't be enabled\n",__func__);
+
+		err = clk_enable(usb3_sclk);
+		if(err)
+			printk(KERN_ERR"[ERROR]%s: usb3_sclk can't be enabled\n",__func__);
+
+		usb3_emc_sclk_enable = 1;
+	}
+	else if ((gpio_get_value(gpio) == 1) && (usb3_emc_sclk_enable == 1)){
+		printk(KERN_INFO"ehci-tegra: No dock detected\n");
+		clk_disable(usb3_sclk);
+		clk_disable(usb3_emc_clk);
+		usb3_emc_sclk_enable = 0;
+	}
+}
+
+static void usb3_irq_dock_in_work(void)
+{
+	tegra_ehci_usb3_clk_check();
+}
+
+static irqreturn_t tegra_ehci_dock_in_interrupt_handler(int irq, void *dev_id)
+{
+	schedule_delayed_work(&usb3_dock_in_workq, 0.5* HZ);
+	wake_lock_timeout(&tegra_ehci_usb3_wake_lock, 0.5 * HZ);
+
+	return IRQ_HANDLED;
+}
+
+
+static int tegra_ehci_irq_dock_in(struct usb_hcd *hcd)
+{
+	int rc = 0 ;
+	unsigned gpio = TEGRA_GPIO_PX5;
+	unsigned irq = gpio_to_irq(TEGRA_GPIO_PX5);
+	const char* label = "tegra_ehci_dock_in" ;
+
+	tegra_gpio_enable(gpio);
+	rc = gpio_request(gpio, label);
+	if (rc) {
+		printk(KERN_ERR"ehci-tegra: gpio_request failed for input %d\n", gpio);
+	}
+
+	rc = gpio_direction_input(gpio) ;
+	if (rc) {
+		printk(KERN_ERR"ehci-tegra: gpio_direction_input failed for input %d\n", gpio);
+		goto err_gpio_direction_input_failed;
+	}
+	printk(KERN_INFO"ehci-tegra: GPIO = %d , state = %d\n", gpio, gpio_get_value(gpio));
+
+	rc = request_irq(irq, tegra_ehci_dock_in_interrupt_handler,IRQF_SHARED|IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING/*|IRQF_TRIGGER_HIGH|IRQF_TRIGGER_LOW*/, label, hcd);
+	if (rc < 0) {
+		printk(KERN_ERR"ehci-tegra: Could not register for %s interrupt, irq = %d, rc = %d\n", label, irq, rc);
+		rc = -EIO;
+		goto err_gpio_request_irq_fail ;
+	}
+	printk(KERN_INFO"ehci-tegra: request irq = %d, rc = %d\n", irq, rc);
+
+	schedule_delayed_work(&usb3_dock_in_workq, 0.5* HZ);
+
+err_gpio_request_irq_fail :
+	gpio_free(gpio);
+err_gpio_direction_input_failed:
+	return rc ;
+}
+
+
 static int tegra_ehci_probe(struct platform_device *pdev)
 {
 	struct resource *res;
@@ -942,6 +1062,18 @@ static int tegra_ehci_probe(struct platform_device *pdev)
 	if (instance == 1)
 		ehci_handle = hcd;
 #endif
+
+	printk(KERN_INFO"%s: ASUSGetProjectID()=%d\n",__func__,ASUSGetProjectID());
+	if (instance == 2 && ASUSGetProjectID()==101){
+		/* init work queue */
+		INIT_DELAYED_WORK(&usb3_dock_in_workq, usb3_irq_dock_in_work);
+		wake_lock_init(&tegra_ehci_usb3_wake_lock, WAKE_LOCK_SUSPEND, "usb3_dock_in_wake_lock");
+		usb3_emc_sclk_enable = 1;
+		usb3_sclk = tegra->sclk_clk;
+		usb3_emc_clk = tegra->emc_clk;
+		tegra_ehci_irq_dock_in(hcd);
+	}
+
 	return err;
 
 fail:
@@ -1006,6 +1138,8 @@ static int tegra_ehci_remove(struct platform_device *pdev)
 {
 	struct tegra_ehci_hcd *tegra = platform_get_drvdata(pdev);
 	struct usb_hcd *hcd = ehci_to_hcd(tegra->ehci);
+	unsigned gpio = TEGRA_GPIO_PX5;
+	unsigned irq = gpio_to_irq(TEGRA_GPIO_PX5);
 
 	if (tegra == NULL || hcd == NULL)
 		return -EINVAL;
@@ -1037,12 +1171,30 @@ static int tegra_ehci_remove(struct platform_device *pdev)
 	clk_disable(tegra->clk);
 	clk_put(tegra->clk);
 
-	clk_disable(tegra->sclk_clk);
+
+	if(ASUSGetProjectID()==101){
+		if((tegra->phy->instance == 2) && (usb3_emc_sclk_enable == 1))
+			clk_disable(tegra->sclk_clk);
+		else if(tegra->phy->instance != 2)
+			clk_disable(tegra->sclk_clk);
+	}else
+		clk_disable(tegra->sclk_clk);
 	clk_put(tegra->sclk_clk);
 
-	clk_disable(tegra->emc_clk);
+	if(ASUSGetProjectID()==101){
+		if((tegra->phy->instance == 2) && (usb3_emc_sclk_enable == 1)){
+			clk_disable(tegra->emc_clk);
+			usb3_emc_sclk_enable = 0;
+		}else if(tegra->phy->instance != 2)
+			clk_disable(tegra->sclk_clk);
+	}else
+		clk_disable(tegra->sclk_clk);
 	clk_put(tegra->emc_clk);
 
+	if(tegra->phy->instance == 2 && ASUSGetProjectID()==101){
+		free_irq(irq, hcd);
+		gpio_free(gpio);
+	}
 	kfree(tegra);
 	return 0;
 }

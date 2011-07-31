@@ -27,6 +27,9 @@ extern int wm8903_mic_detect(struct snd_soc_codec *codec,
 #define WM8903_BCLK       3
 #define WM8903_LRCLK      4
 
+#define ENABLE_SPEAKER 1
+#define DISABLE_SPEAKER 0
+
 /*
  * Register values.
  */

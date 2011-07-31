@@ -113,6 +113,12 @@ static inline bool nvhost_syncpt_min_cmp(struct nvhost_syncpt *sp,
 	return ((s32)(cur - thresh) >= 0);
 }
 
+static inline u32 nvhost_syncpt_read_min(struct nvhost_syncpt *sp, u32 id)
+{
+        smp_rmb();
+        return (u32)atomic_read(&sp->min_val[id]);
+}
+
 /**
  * Returns true if syncpoint min == max
  */
@@ -138,11 +144,12 @@ u32 nvhost_syncpt_read(struct nvhost_syncpt *sp, u32 id);
 void nvhost_syncpt_incr(struct nvhost_syncpt *sp, u32 id);
 
 int nvhost_syncpt_wait_timeout(struct nvhost_syncpt *sp, u32 id, u32 thresh,
-			u32 timeout);
+			u32 timeout, u32 *value);
 
 static inline int nvhost_syncpt_wait(struct nvhost_syncpt *sp, u32 id, u32 thresh)
 {
-	return nvhost_syncpt_wait_timeout(sp, id, thresh, MAX_SCHEDULE_TIMEOUT);
+	return nvhost_syncpt_wait_timeout(sp, id, thresh,
+                                          MAX_SCHEDULE_TIMEOUT, NULL);
 }
 
 int nvhost_syncpt_wait_check(struct nvmap_client *nvmap,

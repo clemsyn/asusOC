@@ -56,9 +56,6 @@ static int               	lineout_config_gpio(void);
 static void 		detection_work(struct work_struct *work);
 static int               	btn_config_gpio(void);
 int 			hs_micbias_power(int on);
-static irqreturn_t	button_irq_handler(int irq, void *dev_id);
-static void	btn_work_queue(struct work_struct *work);
-static int	headset_create_input_dev(void);
 /*----------------------------------------------------------------------------
 ** GLOBAL VARIABLES
 **----------------------------------------------------------------------------*/
@@ -79,11 +76,6 @@ struct headset_data {
 	unsigned int irq;
 	struct hrtimer timer;
 	ktime_t debouncing_time;
-	atomic_t btn_state;
-	int ignore_btn;
-	unsigned int irq_btn;
-	struct hrtimer btn_timer;
-	ktime_t btn_debouncing_time;
 };
 
 static struct headset_data *hs_data;
@@ -92,43 +84,15 @@ EXPORT_SYMBOL(jack_alive);
 bool lineout_alive;
 EXPORT_SYMBOL(lineout_alive);
 
-int ifininit = 0;
-int hook_count = 0;
-unsigned long D_delay = 110;
-int BTN_F = 0;
-int PRJID = 0;
-struct timer_list BTN_TIMER;
-void BTN_timer_function(unsigned long i);
-int BTN_start_timer(unsigned long delay);
-
 static struct workqueue_struct *g_detection_work_queue;
 static DECLARE_WORK(g_detection_work, detection_work);
 
 struct work_struct headset_work;
 struct work_struct lineout_work;
-struct work_struct work_btn;
 extern struct snd_soc_codec *global_codec;
 extern bool need_spk;
 extern int PRJ_ID;
 extern struct wm8903_parameters audio_params[];
-
-int BTN_start_timer(unsigned long delay)
-{
-	int retval = 0;
-
-	retval = del_timer(&BTN_TIMER);
-	init_timer(&BTN_TIMER);
-	BTN_TIMER.expires = jiffies+(u32)delay;
-	BTN_TIMER.data = 0;
-	BTN_TIMER.function = BTN_timer_function;
-	add_timer(&BTN_TIMER);
-
-	return retval;
-}
-void BTN_timer_function(unsigned long i)
-{
-	BTN_F = 0;
-}
 
 static ssize_t headset_name_show(struct switch_dev *sdev, char *buf)
 {
@@ -156,9 +120,6 @@ static ssize_t headset_state_show(struct switch_dev *sdev, char *buf)
 
 static void insert_headset(void)
 {
-	hs_micbias_power(1);
-	msleep(100);
-
 	snd_soc_write(global_codec, 0x0e, 0x3); /* Enable HP output*/
 	switch_set_state(&hs_data->sdev, HEADSET);
 	hs_data->debouncing_time = ktime_set(0, 20000000);  /* 20 ms */
@@ -167,7 +128,6 @@ static void insert_headset(void)
 
 static void remove_headset(void)
 {
-	hs_micbias_power(0);
 	snd_soc_write(global_codec, 0x0e, 0x0);	/* Disable HP output*/
 	switch_set_state(&hs_data->sdev, NO_DEVICE);
 	hs_data->debouncing_time = ktime_set(0, 100000000);  /* 100 ms */
@@ -197,55 +157,10 @@ int check_hs_type(void)
 }
 EXPORT_SYMBOL(check_hs_type);
 
-static void btn_work_queue(struct work_struct *work)
-{
-	if(switch_get_state(&hs_data->sdev) == NO_DEVICE || gpio_get_value(JACK_GPIO)){
-		msleep(200);
-	}else{
-		msleep(10);  /* Button debucing time */
-
-		if(!gpio_get_value(JACK_GPIO)){			/* Headset Plug-in */
-			if(switch_get_state(&hs_data->sdev) != NO_DEVICE){
-			if(gpio_get_value(HOOK_GPIO)){
-				if(BTN_F != 0)
-					goto out;
-
-			input_report_key(hs_data->input, 233, 1);/* Key_HeadsetHook Down */
-
-			if(!gpio_get_value(HOOK_GPIO)){
-				input_report_key(hs_data->input, 233, 0);/* Key_HeadsetHook Up */
-			}
-			}else{
-				input_report_key(hs_data->input, 233, 0);/* Key_HeadsetHook Up */
-			}
-				hook_count = 0;
-		}
-		}
-       }
-
-out:
-	hook_count = 0;
-}
-
-static irqreturn_t button_irq_handler(int irq, void *dev_id)
-{
-	int state = 0;
-
-	if(!ifininit){
-		schedule_work(&work_btn) ;
-		hook_count++;
-	}
-	return IRQ_HANDLED;
-}
-
 static void detection_work(struct work_struct *work)
 {
 	unsigned long irq_flags;
 	int cable_in1;
-
-	hs_micbias_power(0);
-	del_timer(&BTN_TIMER);
-	BTN_F = 1;
 
 	/* Disable headset interrupt while detecting.*/
 	local_irq_save(irq_flags);
@@ -264,22 +179,15 @@ static void detection_work(struct work_struct *work)
 		/* Headset not plugged in */
 		if (switch_get_state(&hs_data->sdev) == HEADSET)
 			remove_headset();
-		BTN_start_timer(310);
 		return;
 	}
 
 	cable_in1 = gpio_get_value(JACK_GPIO);
 
 	if (cable_in1 == 0) {
-	       BTN_start_timer(310);
-		if(switch_get_state(&hs_data->sdev) == NO_DEVICE){
-		       hook_count=0;
+		if(switch_get_state(&hs_data->sdev) == NO_DEVICE)
 			insert_headset();
-		}else{
-			hs_micbias_power(1);
-		}
 	} else{
-		BTN_start_timer(310);
 		printk("HEADSET: Jack-in GPIO is low, but not a headset \n");
 	}
 }
@@ -339,13 +247,7 @@ static int btn_config_gpio()
 	ret = gpio_request(HOOK_GPIO, "btn_INT");
 	ret = gpio_direction_input(HOOK_GPIO);
 
-	if(PRJID == 102){
-		hs_data->irq_btn = gpio_to_irq(HOOK_GPIO);
-
-		ret = request_irq(hs_data->irq_btn, &button_irq_handler, IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING, "btn_INT", 0);
-		if(ret)
-			printk("HEADSET: btn_config_gpio: request_irq failed for gpio %d\n", HOOK_GPIO);
-	}
+	return 0;
 }
 
 static void lineout_work_queue(struct work_struct *work)
@@ -471,41 +373,6 @@ int hs_micbias_power(int on)
 }
 EXPORT_SYMBOL(hs_micbias_power);
 
-static int headset_create_input_dev(void)
-{
-	int err = 0;
-
-	/* Device related initialization */
-	hs_data->input = input_allocate_device();
-	if (!hs_data->input) {
-		err = -ENOMEM;
-		goto out;
-	}
-
-	printk("HEADSET: device allocated\n");
-
-	hs_data->input->name = "Wired Headset";
-	hs_data->input->phys = "/dev/input/headset";
-
-	set_bit(EV_SYN, hs_data->input->evbit);
-	set_bit(EV_KEY, hs_data->input->evbit);
-	set_bit(233, hs_data->input->keybit);
-
-	/* Register the Device */
-	err = input_register_device(hs_data->input);
-	if (err){
-		printk("HEADSET: Unable to register %s input device\n", hs_data->input->name);
-		goto free_out;
-        }
-
-	return 0;
-
-free_out:
-	input_free_device(hs_data->input);
-out:
-	return err;
-}
-
 /**********************************************************
 **  Function: Headset driver init function
 **  Parameter: none  
@@ -523,7 +390,6 @@ static int __init headset_init(void)
 		return -ENOMEM;
 
 	hs_data->debouncing_time = ktime_set(0, 100000000);  /* 100 ms */
-	hs_data->btn_debouncing_time = ktime_set(0, 10000000); /* 10 ms */
 	hs_data->sdev.name = "h2w";
 	hs_data->sdev.print_name = headset_name_show;
 	hs_data->sdev.print_state = headset_state_show;
@@ -536,26 +402,15 @@ static int __init headset_init(void)
 
 	hrtimer_init(&hs_data->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	hs_data->timer.function = detect_event_timer_func;
-	init_timer(&BTN_TIMER);
-
-	PRJID = ASUSGetProjectID();
-
-	if (PRJID == 101){
-		INIT_WORK(&lineout_work, lineout_work_queue);
-		lineout_config_gpio();	
-	}else if(PRJID == 102){
-		INIT_WORK(&work_btn, btn_work_queue);
-
-		ret = headset_create_input_dev();
-		if (ret) {
-			printk(KERN_WARNING "HEADSET: Error creating input device: %d\n", ret);
-		}
-		printk("HEADSET: headset_create_input_dev(client), err: %d(0:success)\n",ret);
-	}
 
 	printk("HEADSET: Headset detection mode\n");
 	jack_config_gpio();/*Config jack detection GPIO*/
 	btn_config_gpio();/*Config hook detection GPIO*/
+
+	if (ASUSGetProjectID() == 101){
+		INIT_WORK(&lineout_work, lineout_work_queue);
+		lineout_config_gpio();
+	}
 
 	return 0;
 
@@ -584,8 +439,6 @@ static void __exit headset_exit(void)
 	}
 
 	free_irq(hs_data->irq, 0);
-	if(PRJID == 102)
-		free_irq(hs_data->irq_btn, 0);
 	destroy_workqueue(g_detection_work_queue);
 	switch_dev_unregister(&hs_data->sdev);
 }

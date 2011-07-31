@@ -85,6 +85,7 @@ static int asusec_dock_battery_get_status(union power_supply_propval *val);
 static int asusec_dock_battery_get_property(struct power_supply *psy,
 	enum power_supply_property psp,
 	union power_supply_propval *val);
+int asusec_close_keyboard(void);
 
 /*
  * global variable
@@ -172,9 +173,6 @@ static ssize_t tap_click_store(struct device *dev, struct device_attribute *attr
 	return count;
 }
 
-DEVICE_ATTR(tap_toggle, 0666, tap_click_show, tap_click_store);
-/* end tapclick toggle - netarchy */
-
 static DEVICE_ATTR(ec_status, S_IWUSR | S_IRUGO, asusec_show,NULL);
 static DEVICE_ATTR(ec_info, S_IWUSR | S_IRUGO, asusec_info_show,NULL);
 static DEVICE_ATTR(ec_dock, S_IWUSR | S_IRUGO, asusec_show_dock,NULL);
@@ -192,7 +190,6 @@ static struct attribute *asusec_smbus_attributes[] = {
 	&dev_attr_ec_dock_led.attr,
 	&dev_attr_ec_wakeup.attr,
 	&dev_attr_ec_dock_discharge.attr,
-        &dev_attr_tap_toggle.attr,
 	&dev_attr_ec_dock_battery.attr,
 	&dev_attr_ec_dock_battery_all.attr,
 	&dev_attr_ec_dock_control_flag.attr,
@@ -650,7 +647,6 @@ static int asusec_chip_init(struct i2c_client *client)
 #endif
 
 	ASUSEC_NOTICE("touchpad and keyboard init\n");
-	ec_chip->status = 1;
 	ec_chip->d_index = 0;
 
 	asusec_keypad_enable(client);
@@ -662,7 +658,11 @@ static int asusec_chip_init(struct i2c_client *client)
 	if ((ASUSGetProjectID()==101) && ec_chip->tp_enable){
 		asusec_touchpad_enable(client);
 	}
+	if ((ASUSGetProjectID()==102) && !gpio_get_value(TEGRA_GPIO_PS4)){
+		asusec_close_keyboard();
+	}
 
+	ec_chip->status = 1;
 	wake_unlock(&ec_chip->wake_lock);
 	return 0;
 
@@ -1383,13 +1383,18 @@ static void asusec_dock_init_work_function(struct work_struct *dat)
 		switch_set_state(&ec_chip->dock_sdev, ec_chip->dock_in ? 10 : 0);
 		mutex_unlock(&ec_chip->input_lock);
 	}
-	if (ASUSGetProjectID()==102){
-		ASUSEC_INFO("EP102 dock-init\n");
+	else if (ASUSGetProjectID()==102){
+		ASUSEC_NOTICE("EP102 dock-init\n");
 		ec_chip->dock_in = 1;
-		if(ec_chip->init_success == 0){
-			asusec_reset_dock();
-			msleep(200);
-			asusec_chip_init(ec_chip->client);
+		if (gpio_get_value(TEGRA_GPIO_PS4) || (!ec_chip->status)){
+			if(ec_chip->init_success == 0){
+				msleep(400);
+				asusec_reset_dock();
+				msleep(200);
+				asusec_chip_init(ec_chip->client);
+			}
+		} else {
+			ASUSEC_NOTICE("Keyboard is closed\n");
 		}
 	}
 	wake_unlock(&ec_chip->wake_lock_init);
@@ -1933,6 +1938,7 @@ static long asusec_ioctl(struct file *flip,
 				buff_out_ptr = 0;
 				h2ec_count = 0;
 				ec_chip->suspend_state = 0;
+				ec_chip->status = 0;
 				asusec_reset_dock();
 				wake_lock_timeout(&ec_chip->wake_lock, 3*60*HZ);
 				msleep(3000);
@@ -1950,6 +1956,7 @@ static long asusec_ioctl(struct file *flip,
 			break;
 		case ASUSEC_INIT:
 			msleep(500);
+			ec_chip->status = 0;
 			queue_delayed_work(asusec_wq, &ec_chip->asusec_dock_init_work, 0);
 			msleep(2500);
 			ASUSEC_NOTICE("ASUSEC_INIT - EC version: %s\n", ec_chip->ec_version);
@@ -2201,6 +2208,7 @@ int asusec_dock_resume(void){
 EXPORT_SYMBOL(asusec_dock_resume);
 
 int asusec_open_keyboard(void){
+	ASUSEC_NOTICE("keyboard opened, op_mode = %d\n", ec_chip->op_mode);
 	if ((ec_chip->suspend_state == 0) && (ec_chip->op_mode == 0)){
 		ASUSEC_NOTICE("keyboard opened\n");
 		ec_chip->init_success = 0;
@@ -2215,8 +2223,11 @@ EXPORT_SYMBOL(asusec_open_keyboard);
 
 int asusec_close_keyboard(void){
 	int ret_val;
-	if ((ec_chip->suspend_state == 0) && (ec_chip->op_mode == 0)){
-	ASUSEC_NOTICE("keyboard closed\n");
+
+	if (ec_chip->status == 0){
+		return 0;
+	} else if ((ec_chip->suspend_state == 0) && (ec_chip->op_mode == 0)){
+		ASUSEC_NOTICE("keyboard closed\n");
 		if (ec_chip->dock_in){
 			ret_val = asusec_i2c_test(ec_chip->client);
 			if(ret_val < 0){
@@ -2227,12 +2238,11 @@ int asusec_close_keyboard(void){
 
 			ec_chip->i2c_dm_data[0] = 8;
 			ec_chip->i2c_dm_data[5] = ec_chip->i2c_dm_data[5] & 0xDF;
-//			ec_chip->i2c_dm_data[5] = ec_chip->i2c_dm_data[5] | 0x02;
+			ec_chip->i2c_dm_data[5] = ec_chip->i2c_dm_data[5] | 0x22;
 			asusec_dockram_write_data(0x0A,9);
 		}
 	
 fail_to_access_ec:	
-		flush_workqueue(asusec_wq);
 		ec_chip->init_success = 0;
 	}
 	return 0;

@@ -30,9 +30,8 @@
 
 #include "dev.h"
 
-#define ACM_TIMEOUT 1*HZ
+#define ACM_TIMEOUT_MSEC 25
 
-#define DISABLE_3D_POWERGATING
 #define DISABLE_MPE_POWERGATING
 
 void nvhost_module_busy(struct nvhost_module *mod)
@@ -88,7 +87,8 @@ void nvhost_module_idle_mult(struct nvhost_module *mod, int refs)
 	mutex_lock(&mod->lock);
 	if (atomic_sub_return(refs, &mod->refcount) == 0) {
 		BUG_ON(!mod->powered);
-		schedule_delayed_work(&mod->powerdown, ACM_TIMEOUT);
+		schedule_delayed_work(
+                        &mod->powerdown, msecs_to_jiffies(ACM_TIMEOUT_MSEC));
 		kick = true;
 	}
 	mutex_unlock(&mod->lock);
@@ -151,7 +151,7 @@ int nvhost_module_init(struct nvhost_module *mod, const char *name,
 	mod->powered = false;
 	mod->powergate_id = get_module_powergate_id(name);
 
-#ifdef DISABLE_3D_POWERGATING
+#if CONFIG_DISABLE_3D_POWERGATING
 	/*
 	 * It is possible for the 3d block to generate an invalid memory
 	 * request during the power up sequence in some cases.  Workaround
@@ -218,15 +218,17 @@ static void debug_not_idle(struct nvhost_module *mod)
 		printk("tegra_grhost: all locks released\n");
 }
 
-void nvhost_module_suspend(struct nvhost_module *mod, bool system_suspend)
+bool nvhost_module_suspend(struct nvhost_module *mod, bool system_suspend)
 {
 	int ret;
+
+        printk("nvhost_module_suspend()+\n");
 
 	if (system_suspend && (!is_module_idle(mod)))
 		debug_not_idle(mod);
 
 	ret = wait_event_timeout(mod->idle, is_module_idle(mod),
-			   ACM_TIMEOUT + msecs_to_jiffies(500));
+			  msecs_to_jiffies(ACM_TIMEOUT_MSEC + 1000));
 	if (ret == 0)
 		nvhost_debug_dump();
 
@@ -236,7 +238,18 @@ void nvhost_module_suspend(struct nvhost_module *mod, bool system_suspend)
 	flush_delayed_work(&mod->powerdown);
 	if (system_suspend)
 		printk("tegra_grhost: flushed delayed work\n");
-	BUG_ON(mod->powered);
+
+        if(mod->powered) {
+                /* Suspend fail. */
+                printk("nvhost_module_suspend()-: %s, refcount= %d\n", mod->name, mod->refcount);
+                // BUG_ON(mod->powered);
+                return false;
+        } else {
+                /* Suspend success. */
+                printk("nvhost_module_suspend()-\n");
+                return true;
+        }
+
 }
 
 void nvhost_module_deinit(struct nvhost_module *mod)

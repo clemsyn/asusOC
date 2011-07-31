@@ -201,7 +201,8 @@ static int tegra_overlay_set_windowattr(struct tegra_overlay_info *overlay,
 		nvhost_syncpt_wait_timeout(&overlay->ndev->host->syncpt,
 					   flip_win->attr.pre_syncpt_id,
 					   flip_win->attr.pre_syncpt_val,
-					   msecs_to_jiffies(500));
+					   msecs_to_jiffies(500),
+                                           NULL);
 	}
 
 	/* Store the blend state incase we need to reorder later */
@@ -622,6 +623,7 @@ static int tegra_overlay_release(struct inode *inode, struct file *filp)
 	list_del(&client->list);
 	spin_unlock_irqrestore(&client->dev->clients_lock, flags);
 
+        nvmap_client_put(client->user_nvmap);
 	put_task_struct(client->task);
 
 	kfree(client);

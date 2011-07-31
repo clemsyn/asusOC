@@ -32,6 +32,7 @@ extern bool lineout_alive;
 bool need_spk;
 EXPORT_SYMBOL(need_spk);
 extern int PRJ_ID;
+extern int spk_status;
 extern struct wm8903_parameters audio_params[];
 
 static void tegra_audio_route(struct tegra_audio_data* audio_data,
@@ -58,7 +59,8 @@ static void tegra_audio_route(struct tegra_audio_data* audio_data,
 			need_spk = true;
 			snd_soc_write(audio_data->codec, WM8903_POWER_MANAGEMENT_4, 0x0003); /* MIXSPK Enable*/
 			snd_soc_write(audio_data->codec, WM8903_POWER_MANAGEMENT_5, 0x0003); /* SPK Enable*/
-			snd_soc_write(audio_data->codec, WM8903_GPIO_CONTROL_3, 0x0033); /* GPIO3 configure: EN_SPK*/
+			if(spk_status==ENABLE_SPEAKER)
+				snd_soc_write(audio_data->codec, WM8903_GPIO_CONTROL_3, 0x0033); /* GPIO3 configure: EN_SPK*/
 			snd_soc_write(audio_data->codec, WM8903_ANALOGUE_SPK_MIX_LEFT_0, 0x0008); /* DACR_TO_MIXSPK Enable*/
 			snd_soc_write(audio_data->codec, WM8903_ANALOGUE_SPK_MIX_RIGHT_0, 0x0004); /* DACL_TO_MIXSPK Enable*/
 			if(PRJ_ID == EP_101){
@@ -125,7 +127,8 @@ static void tegra_audio_route(struct tegra_audio_data* audio_data,
 			snd_soc_write(audio_data->codec, WM8903_ANALOGUE_OUT3_RIGHT,audio_params[EP102].analog_speaker_volume | 0x80); /* SPKR Volume: 0dB*/
 			}
 			snd_soc_write(audio_data->codec, WM8903_POWER_MANAGEMENT_5, 0x0003); /* SPK Enable*/
-			snd_soc_write(audio_data->codec, WM8903_GPIO_CONTROL_3, 0x0033); /* GPIO3 configure: EN_SPK*/
+			if(spk_status==ENABLE_SPEAKER)
+				snd_soc_write(audio_data->codec, WM8903_GPIO_CONTROL_3, 0x0033); /* GPIO3 configure: EN_SPK*/
 			snd_soc_write(audio_data->codec, WM8903_ANALOGUE_SPK_MIX_LEFT_0, 0x0008); /* DACR_TO_MIXSPK Enable*/
 			snd_soc_write(audio_data->codec, WM8903_ANALOGUE_SPK_MIX_RIGHT_0, 0x0004); /* DACL_TO_MIXSPK Enable*/
 		}
@@ -142,7 +145,8 @@ static void tegra_audio_route(struct tegra_audio_data* audio_data,
 			snd_soc_write(audio_data->codec, WM8903_ANALOGUE_OUT3_RIGHT,audio_params[EP102].analog_speaker_volume | 0x80); /* SPKR Volume: 0dB*/
 			}
 			snd_soc_write(audio_data->codec, WM8903_POWER_MANAGEMENT_5, 0x0003); /* SPK Enable*/
-			snd_soc_write(audio_data->codec, WM8903_GPIO_CONTROL_3, 0x0033); /* GPIO3 configure: EN_SPK*/
+			if(spk_status==ENABLE_SPEAKER)
+				snd_soc_write(audio_data->codec, WM8903_GPIO_CONTROL_3, 0x0033); /* GPIO3 configure: EN_SPK*/
 			snd_soc_write(audio_data->codec, WM8903_ANALOGUE_SPK_MIX_LEFT_0, 0x0008); /* DACR_TO_MIXSPK Enable*/
 			snd_soc_write(audio_data->codec, WM8903_ANALOGUE_SPK_MIX_RIGHT_0, 0x0004); /* DACL_TO_MIXSPK Enable*/
 		}

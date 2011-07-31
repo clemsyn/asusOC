@@ -33,6 +33,7 @@
 #include <linux/gpio_keys.h>
 #include <linux/input.h>
 #include <linux/platform_data/tegra_usb.h>
+#include <linux/usb/f_accessory.h>
 #include <linux/usb/android_composite.h>
 #include <linux/mfd/tps6586x.h>
 #include <linux/memblock.h>
@@ -275,6 +276,13 @@ static __initdata struct tegra_clk_init_table ventana_clk_init_table[] = {
 #define USB_PRODUCT_ID_RNDIS		0x4E2F
 #define USB_PRODUCT_ID_RNDIS_ADB    0x4E3F
 //#define USB_VENDOR_ID			0x0955
+
+/* ASUS SL101 product ID */
+#define USB_SL101_PRODUCT_ID_MTP_ADB    0x4E01
+#define USB_SL101_PRODUCT_ID_MTP    0x4E00
+#define USB_SL101_PRODUCT_ID_RNDIS    0x4E02
+#define USB_SL101_PRODUCT_ID_RNDIS_ADB    0x4E03
+
 /* ASUS vendor ID */
 #define USB_VENDOR_ID			0x0B05
 
@@ -282,11 +290,18 @@ static __initdata struct tegra_clk_init_table ventana_clk_init_table[] = {
 static char *usb_functions_mtp_ums[] = { "mtp" };
 //static char *usb_functions_mtp_adb_ums[] = { "mtp", "adb", "usb_mass_storage" };
 static char *usb_functions_mtp_adb_ums[] = { "mtp", "adb" };
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+static char *usb_functions_accessory[] = { "accessory" };
+static char *usb_functions_accessory_adb[] = { "accessory", "adb" };
+#endif
 #ifdef CONFIG_USB_ANDROID_RNDIS
 static char *usb_functions_rndis[] = { "rndis" };
 static char *usb_functions_rndis_adb[] = { "rndis", "adb" };
 #endif
 static char *usb_functions_all[] = {
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+        "accessory",
+#endif
 #ifdef CONFIG_USB_ANDROID_RNDIS
 	"rndis",
 #endif
@@ -306,6 +321,20 @@ static struct android_usb_product usb_products[] = {
 		.num_functions  = ARRAY_SIZE(usb_functions_mtp_adb_ums),
 		.functions      = usb_functions_mtp_adb_ums,
 	},
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+        {
+                .vendor_id      = USB_ACCESSORY_VENDOR_ID,
+                .product_id     = USB_ACCESSORY_PRODUCT_ID,
+                .num_functions  = ARRAY_SIZE(usb_functions_accessory),
+                .functions      = usb_functions_accessory,
+        },
+        {
+                .vendor_id      = USB_ACCESSORY_VENDOR_ID,
+                .product_id     = USB_ACCESSORY_ADB_PRODUCT_ID,
+                .num_functions  = ARRAY_SIZE(usb_functions_accessory_adb),
+                .functions      = usb_functions_accessory_adb,
+        },
+#endif
 #ifdef CONFIG_USB_ANDROID_RNDIS
 	{
 		.product_id     = USB_PRODUCT_ID_RNDIS,
@@ -634,13 +663,9 @@ static struct platform_device tegra_camera = {
 };
 
 static struct platform_device *ventana_devices[] __initdata = {
-	&tegra_usb_fsg_device,
-	&androidusb_device,
 	&tegra_uartb_device,
 	&tegra_uartc_device,
 	&pmu_device,
-	&tegra_udc_device,
-	&tegra_ehci2_device,
 	&tegra_gart_device,
 	&tegra_aes_device,
 #ifdef CONFIG_KEYBOARD_GPIO
@@ -786,6 +811,7 @@ static struct tegra_ehci_platform_data tegra_ehci_pdata[] = {
 			.phy_config = &ulpi_phy_config,
 			.operating_mode = TEGRA_USB_HOST,
 			.power_down_on_bus_suspend = 1,
+                      
 	},
 	[2] = {
 			.phy_config = &utmi_phy_config[1],
@@ -1014,8 +1040,14 @@ static void ventana_usb_init(void)
 	char *src = NULL;
 	int i;
 
-	tegra_otg_device.dev.platform_data = &tegra_otg_pdata;
+        /* OTG should be the first to be registered */
+ 	tegra_otg_device.dev.platform_data = &tegra_otg_pdata;
 	platform_device_register(&tegra_otg_device);
+
+        platform_device_register(&tegra_usb_fsg_device);
+        platform_device_register(&androidusb_device);
+        platform_device_register(&tegra_udc_device);
+        platform_device_register(&tegra_ehci2_device);
 
 	tegra_ehci3_device.dev.platform_data=&tegra_ehci_pdata[2];
 	platform_device_register(&tegra_ehci3_device);
@@ -1035,6 +1067,28 @@ static void ventana_usb_init(void)
 #endif
 }
 
+unsigned int boot_reason;
+void tegra_booting_info(void )
+{
+	#define SWR_SYS_RST_STA  (1<<13)
+	#define WDT_SYS_RST_STA  (1<<12)
+	unsigned int reg=0;
+	static void __iomem *clk_source = IO_ADDRESS(TEGRA_CLK_RESET_BASE);
+
+	reg = readl(clk_source);
+	if (reg & SWR_SYS_RST_STA){
+		boot_reason=SWR_SYS_RST_STA;
+		printk("tegra_booting_info-rebooting\n");
+	} else if (reg & WDT_SYS_RST_STA){
+		boot_reason=WDT_SYS_RST_STA;
+		printk("tegra_booting_info-watchdog\n");
+	} else{
+		boot_reason=0;
+		printk("tegra_booting_info-normal\n");
+	}
+}
+
+
 static void __init tegra_ventana_init(void)
 {
 #if defined(CONFIG_TOUCHSCREEN_PANJIT_I2C) || \
@@ -1042,6 +1096,7 @@ static void __init tegra_ventana_init(void)
 	struct board_info BoardInfo;
 #endif
 
+        tegra_booting_info();
 	tegra_common_init();
 	ventana_setup_misc();
 	tegra_clk_init_from_table(ventana_clk_init_table);
@@ -1051,6 +1106,13 @@ static void __init tegra_ventana_init(void)
 	    tegra_chip_uid());
 	snprintf(usb_serial_num, sizeof(usb_serial_num), "%llx", tegra_chip_uid());
 	andusb_plat.serial_number = kstrdup(usb_serial_num, GFP_KERNEL);
+        if (ASUSGetProjectID() == 102) {
+		andusb_plat.products[0].product_id = USB_SL101_PRODUCT_ID_MTP;
+		andusb_plat.products[1].product_id = USB_SL101_PRODUCT_ID_MTP_ADB;
+		andusb_plat.products[2].product_id = USB_SL101_PRODUCT_ID_RNDIS;
+		andusb_plat.products[3].product_id = USB_SL101_PRODUCT_ID_RNDIS_ADB;
+	}
+
 	tegra_i2s_device1.dev.platform_data = &tegra_audio_pdata[0];
 	tegra_i2s_device2.dev.platform_data = &tegra_audio_pdata[1];
 	tegra_spdif_device.dev.platform_data = &tegra_spdif_pdata;

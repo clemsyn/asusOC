@@ -35,6 +35,13 @@ extern int check_hs_type();
 extern int fm34_config_DSP();
 extern struct wm8903_parameters audio_params[];
 
+int mic_type;
+EXPORT_SYMBOL(mic_type);
+
+#define MIC_DIGITAL 0
+#define MIC_ANALOG 1
+#define MIC_INACTIVE 2
+
 /* codec register values */
 #define B07_INEMUTE		7
 #define B06_VOL_M3DB		6
@@ -153,6 +160,7 @@ static int tegra_hifi_hw_params(struct snd_pcm_substream *substream,
 		hs_type = check_hs_type();
 		if(jack_alive && hs_type){
 		printk("Headset connected, enable external Mic(AMIC)\n");
+		mic_type = MIC_ANALOG;
 
 		/* Disable Digital Microphone(DMIC) for audio input function */
 		CtrlReg = (0x0 << B08_GPIO_FN) |(0x1 << B07_GPIO_DIR) |(0x1 << B05_GPIO_IP_CFG) |(0x1 << B03_GPIO_PD);
@@ -173,9 +181,9 @@ static int tegra_hifi_hw_params(struct snd_pcm_substream *substream,
 		CtrlReg = snd_soc_read(codec, WM8903_DRC_0);
 		CtrlReg |= (1<<B15_DRC_ENA);
 		snd_soc_write(codec, WM8903_DRC_0, CtrlReg);
-		// Single Ended Mic
+		// Differential Mic
 		CtrlReg = (0x0<<B06_IN_CM_ENA) |
-			(0x0<<B00_MODE) | (0x0<<B04_IP_SEL_N)
+			(0x2<<B00_MODE) | (0x0<<B04_IP_SEL_N)
 					| (0x1<<B02_IP_SEL_P);
 		VolumeCtrlReg = (audio_params[EP101].analog_headset_mic_volume << B00_IN_VOL);
 		// Mic Setting
@@ -193,6 +201,7 @@ static int tegra_hifi_hw_params(struct snd_pcm_substream *substream,
 		snd_soc_write(codec, WM8903_AUDIO_INTERFACE_0, CtrlReg);
 		}else{
 		printk("Headset disconnected, enable internal Mic(DMIC)\n");
+		mic_type = MIC_DIGITAL;
 
 		/* Enable Digital Microphone(DMIC) for audio input function */
 		CtrlReg = (0x1 << B06_AIFADCR_SRC) |(0x1 << B04_AIFDACR_SRC);
@@ -229,6 +238,7 @@ static int tegra_hifi_hw_params(struct snd_pcm_substream *substream,
 		CtrlReg |= 0x3; //mic volume 18 db
 		snd_soc_write(codec, R29_DRC_1, CtrlReg);
 	}else{
+		mic_type = MIC_INACTIVE;
 		/* Mic Bias disable */
 		CtrlReg = (0x0<<0) | (0x0<<1);
 		snd_soc_write(codec, WM8903_MIC_BIAS_CONTROL_0, CtrlReg);
@@ -471,6 +481,7 @@ static int tegra_codec_init(struct snd_soc_codec *codec)
 			err = -ENODEV;
 			return err;
 		}
+		clk_enable(audio_data->dap_mclk);
 
 		/* Add tegra specific widgets */
 		snd_soc_dapm_new_controls(codec, tegra_dapm_widgets,

@@ -354,7 +354,7 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 
 	do {
 		if (mmc_card_sd(card) && gpio_get_value(SD_CARD_DETECT) == 1) {
-			MMC_printk("No card, stop read or write");
+			MMC_DBG("No card, stop read or write");
 			goto cmd_err;
 		}
 		struct mmc_command cmd;
@@ -452,7 +452,7 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 		 * programming mode even when things go wrong.
 		 */
 		if (brq.cmd.error || brq.data.error || brq.stop.error) {
-			MMC_printk("%s:cmd_type %d, clock %uHZ, Vdd %u, powermode %u", mmc_hostname(card->host), rq_data_dir(req), (card->host->ios).clock, (card->host->ios).vdd, (card->host->ios).power_mode);
+			MMC_DBG("%s:cmd_type %d, clock %uHZ, Vdd %u, powermode %u", mmc_hostname(card->host), rq_data_dir(req), (card->host->ios).clock, (card->host->ios).vdd, (card->host->ios).power_mode);
 
 			if (brq.data.blocks > 1 && rq_data_dir(req) == READ) {
 				/* Redo read one sector at a time */

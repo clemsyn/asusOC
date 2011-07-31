@@ -270,15 +270,13 @@ static int tegra_target(struct cpufreq_policy *policy,
 
 	mutex_lock(&tegra_cpu_lock);
 
-	if (is_suspended) {
-		ret = -EBUSY;
-		goto out;
-	}
-
 	cpufreq_frequency_table_target(policy, freq_table, target_freq,
 		relation, &idx);
 
 	freq = freq_table[idx].frequency;
+
+        if (is_suspended)
+                goto out;
 
 	target_cpu_speed[policy->cpu] = freq;
 	new_speed = throttle_governor_speed(tegra_cpu_highest_speed());
@@ -299,6 +297,10 @@ static int tegra_pm_notify(struct notifier_block *nb, unsigned long event,
 			freq_table[0].frequency);
 		tegra_update_cpu_speed(freq_table[0].frequency);
 	} else if (event == PM_POST_SUSPEND) {
+                unsigned int freq = tegra_cpu_highest_speed();
+                tegra_update_cpu_speed(freq);
+                pr_info("Tegra cpufreq resume: restoring frequency to %d kHz\n",
+                        freq);
 		is_suspended = false;
 	}
 	mutex_unlock(&tegra_cpu_lock);

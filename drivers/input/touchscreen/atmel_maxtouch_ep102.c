@@ -341,8 +341,9 @@ typedef struct
      Define the checksum of default configuration and change this macro every time 
      when the touch configuration was changed.
 */
-#define DEFAULT_CONFIG_CHECHSUM 0x81AFD3
+#define DEFAULT_CONFIG_CHECKSUM 0xD09D69
 static report_finger_info_struct fingerInfo[10]={0};
+static u8 mHardwareVersion[2];
 static u16 get_object_address_ep102(uint8_t object_type,
 			      uint8_t instance,
 			      struct mxt_object_ep102 *object_table, int max_objs);
@@ -521,10 +522,10 @@ static ssize_t store_mode(struct device *dev, struct device_attribute *devattr,c
 	printk("Touch: cfg[0]=%d, cfg[1]=%d, cfg[2]=%d\n",cfg[0],cfg[1],cfg[2]);
 	
 	mxt_write_byte_ep102(data->client, MXT_BASE_ADDR(MXT_GEN_COMMANDPROCESSOR_T6, data) + MXT_ADR_T6_BACKUPNV,MXT_CMD_T6_BACKUP);
-	gpio_set_value(TEGRA_GPIO_PQ7, 0);
-	msleep(1);
-	gpio_set_value(TEGRA_GPIO_PQ7, 1);
-	msleep(100);
+	//gpio_set_value(TEGRA_GPIO_PQ7, 0);
+	//msleep(1);
+	//gpio_set_value(TEGRA_GPIO_PQ7, 1);
+	//msleep(100);
 //	mxt_write_byte(data->client,MXT_BASE_ADDR(MXT_GEN_COMMANDPROCESSOR_T6,data) + MXT_ADR_T6_RESET, 1);
 	return count;
 }
@@ -533,7 +534,7 @@ DEVICE_ATTR(d_print_ep102, S_IRUGO | S_IWUSR, NULL, store_d_print_ep102);
 DEVICE_ATTR(atmel_touchpanel_status_ep102, 0755, show_status_ep102, NULL);
 DEVICE_ATTR(FW_version_ep102, 0755, show_FW_version_ep102, NULL);
 DEVICE_ATTR(dump_T7_ep102, 0755, dump_T7, NULL);
-DEVICE_ATTR(dump_T22_ep102, 0777, dump_T22, NULL);
+DEVICE_ATTR(dump_T22_ep102, 0755, dump_T22, NULL);
 
 static struct attribute *mxt_attr[] = {
 	&dev_attr_d_print_ep102.attr,
@@ -1364,12 +1365,16 @@ static int init_key_array(struct mxt_data_ep102 *mxt)
 {
 	int i;
 
-	printk("Touch : init key array register\n");
+	 printk("Touch : init key array register\n");
+       // read the Hardware version from the user data last two byte;
+       mxt_read_block_ep102(mxt->client, MXT_BASE_ADDR(MXT_USER_INFO_T38, mxt)+62, 2, mHardwareVersion);
+	 printk("#####EP102 Panel Hardware version is %X:%X\n", mHardwareVersion[0], mHardwareVersion[1]);
+	 
 	mxt_write_byte_ep102(mxt->client,MXT_BASE_ADDR(MXT_GEN_COMMANDPROCESSOR_T6, mxt) + MXT_ADR_T6_CALIBRATE, 1);
 
-	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt), 0x41);
+	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt), 0x1E);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt)+1, 0xFF);
-	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt)+2, 0x32);
+	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt)+2, 0x0A);
 
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt), 0x09);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+1, 0);
@@ -1386,12 +1391,15 @@ static int init_key_array(struct mxt_data_ep102 *mxt)
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+1, 0);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+2, 0);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+3, 0x1C);
-	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+4, 0x29);
+	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+4, 0x2A);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+5, 0);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+6, 0x10);
-	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+7, 0x37);
-	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+8, 0x03);
-	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+9, 0x01);
+	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+7, 0x2D);
+	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+8, 0x02);
+	if(mHardwareVersion[0] == 0) // default 0 for PR device
+	    mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+9, 0x03);    
+	else
+	    mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+9, 0x01);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+10, 0);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+11, 0);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+12, 0x03);
@@ -1414,8 +1422,8 @@ static int init_key_array(struct mxt_data_ep102 *mxt)
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+29, 0);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+30, 0x0F);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+31, 0x0F);
-	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+32, 0);
-	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+33, 0);
+	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+32, 0x31);
+	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+33, 0x34);
 	
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt), 0);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+1, 0x07);
@@ -1428,7 +1436,10 @@ static int init_key_array(struct mxt_data_ep102 *mxt)
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+8,2);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+9,0);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+10,0);
-
+	for(i = 0; i < 11; i++){
+	     mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_KEYARRAY_T15, mxt)+11+i, 0); // T15 instance 1 is 0
+	}
+	  
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_SPT_COMMSCONFIG_T18, mxt),0);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_SPT_COMMSCONFIG_T18, mxt)+1,0);
 	
@@ -1438,11 +1449,11 @@ static int init_key_array(struct mxt_data_ep102 *mxt)
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+3, 0);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+4, 0);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+5, 0);	
-	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+8, 0x28);
+	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+8, 0x20);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+9, 0);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+10, 0);
-	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+11, 0);
-	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+12, 0x0A);
+	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+11, 0x0A);
+	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+12, 0x0F);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+13, 0x14);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+14, 0x19);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_PROCG_NOISESUPPRESSION_T22, mxt)+15, 0x1E);
@@ -1487,12 +1498,11 @@ static int init_key_array(struct mxt_data_ep102 *mxt)
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28, mxt)+3, 0x08);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28, mxt)+4, 0x1C);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_SPT_CTECONFIG_T28, mxt)+5, 0x3C);
-
-for (i=0; i<=63; i++)
-{
-	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_USER_INFO_T38, mxt)+i, 0);
-}
-
+       // we leave the T38[62] and T38[63] for distinguish Hardware version   
+      for (i=0; i<=61; i++) {
+          mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_USER_INFO_T38, mxt)+i, 0);
+     }
+     
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GRIPSUPPRESSION_T40, mxt), 0);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GRIPSUPPRESSION_T40, mxt)+1, 0x14);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GRIPSUPPRESSION_T40, mxt)+2, 0x14);
@@ -1699,7 +1709,7 @@ void process_T9_message_ep102(u8 *message, struct mxt_data_ep102 *mxt, int last_
 							mxt_write_byte_ep102(mxt_client_ep102, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, globe_mxt_ep102)+7, 0x01);
 							mxt_write_byte_ep102(mxt_client_ep102, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, globe_mxt_ep102)+8, 0);
 							mxt_write_byte_ep102(mxt_client_ep102, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, globe_mxt_ep102)+9, 0);
-							mxt_write_byte_ep102(mxt_client_ep102, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, globe_mxt_ep102)+7, 0x37);
+							mxt_write_byte_ep102(mxt_client_ep102, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, globe_mxt_ep102)+7, 0x2D);
 							mxt_write_byte_ep102(mxt_client_ep102, MXT_BASE_ADDR(MXT_PALMSUPPRESSION_T41, globe_mxt_ep102), 1);
 							printk("Touch: disable T8 config, delta x= %d, delta y = %d\n",del_x,del_y);
 							resume_flag_ep102=false;
@@ -1761,13 +1771,13 @@ int process_message_ep102(u8 *message, u8 object, struct mxt_data_ep102 *mxt)
 		cfg_crc= buf[2] << 16 | buf[1] <<8 | buf[0];
 		printk("Touch: configuration checksum is %lx\n",cfg_crc);
 
-		if (cfg_crc != DEFAULT_CONFIG_CHECHSUM){
+		if (cfg_crc != DEFAULT_CONFIG_CHECKSUM){
 			printk("Touch: start BACKUP\n");
 			mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_COMMANDPROCESSOR_T6, mxt) + MXT_ADR_T6_BACKUPNV,MXT_CMD_T6_BACKUP);
-			gpio_set_value(TEGRA_GPIO_PQ7, 0);
-			msleep(1);
-			gpio_set_value(TEGRA_GPIO_PQ7, 1);
-			msleep(100);
+			//gpio_set_value(TEGRA_GPIO_PQ7, 0);
+			//msleep(1);
+			//gpio_set_value(TEGRA_GPIO_PQ7, 1);
+			//msleep(100);
 			}
 		else
 			printk("Touch: config is BACKUP already\n");
@@ -2994,11 +3004,11 @@ static int mxt_resume_ep102(struct i2c_client *client)
 
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_USER_INFO_T38, mxt), 0);
 	msleep(25);
-	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt), 0x41);
+	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt), 0x1E);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_POWERCONFIG_T7, mxt) + 1, 0xFF);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+ 6, 0x05);
-	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+ 7, 0x37);
-	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+ 8, 0x0A);
+	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+ 7, 0x0A);
+	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+ 8, 0x23);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_GEN_ACQUIRECONFIG_T8, mxt)+ 9, 0xC0);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_TOUCH_MULTITOUCHSCREEN_T9, mxt)+ 7, 0x28);
 	mxt_write_byte_ep102(mxt->client, MXT_BASE_ADDR(MXT_PALMSUPPRESSION_T41, mxt), 0);
@@ -3035,8 +3045,8 @@ static struct i2c_driver mxt_driver_ep102 = {
 	.id_table = mxt_idtable_ep102,
 	.probe = mxt_probe_ep102,
 	.remove = __devexit_p(mxt_remove_ep102),
-	.suspend = mxt_suspend_ep102,
-	.resume = mxt_resume_ep102,
+	//.suspend = mxt_suspend_ep102,
+	//.resume = mxt_resume_ep102,
 
 };
 
