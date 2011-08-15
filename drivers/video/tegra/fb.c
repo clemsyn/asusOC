@@ -79,7 +79,10 @@ static int tegra_fb_open(struct fb_info *info, int user)
 {
 	struct tegra_fb_info *tegra_fb = info->par;
 
-	atomic_inc(&tegra_fb->in_use);
+	if (atomic_xchg(&tegra_fb->in_use, 1))
+                return -EBUSY;
+
+        tegra_fb->user_nvmap = NULL;
 
 	return 0;
 }
@@ -88,9 +91,6 @@ static int tegra_fb_release(struct fb_info *info, int user)
 {
 	struct tegra_fb_info *tegra_fb = info->par;
 	struct fb_var_screeninfo *var = &info->var;
-
-        if (atomic_dec_return(&tegra_fb->in_use))
-                return 0;
 
 	flush_workqueue(tegra_fb->flip_wq);
 
@@ -114,7 +114,9 @@ static int tegra_fb_release(struct fb_info *info, int user)
 	if (tegra_fb->user_nvmap) {
 		nvmap_client_put(tegra_fb->user_nvmap);
 		tegra_fb->user_nvmap = NULL;
-	}
+        }
+
+        WARN_ON(!atomic_xchg(&tegra_fb->in_use, 0));
 
 	return 0;
 }
@@ -300,6 +302,8 @@ static int tegra_fb_pan_display(struct fb_var_screeninfo *var,
 		tegra_fb->win->phys_addr = addr;
 		/* TODO: update virt_addr */
 
+                tegra_dc_set_default_emc(tegra_fb->win->dc);
+                tegra_dc_set_dynamic_emc(&tegra_fb->win, 1);
 		tegra_dc_update_windows(&tegra_fb->win, 1);
 		tegra_dc_sync_windows(&tegra_fb->win, 1);
 	}
@@ -510,6 +514,7 @@ static void tegra_fb_flip_worker(struct work_struct *work)
 #endif
 	}
 
+        tegra_dc_set_dynamic_emc(wins, nr_win);
 	tegra_dc_update_windows(wins, nr_win);
 	/* TODO: implement swapinterval here */
 	tegra_dc_sync_windows(wins, nr_win);
@@ -567,6 +572,13 @@ static int tegra_fb_flip(struct tegra_fb_info *tegra_fb,
 
 	queue_work(tegra_fb->flip_wq, &data->work);
 
+        /*
+         * Before the queued flip_wq get scheduled, we set the EMC clock to the
+         * default value in order to do FLIP without glitch.
+         */
+ 
+        tegra_dc_set_default_emc(tegra_fb->win->dc);
+
 	args->post_syncpt_val = syncpt_max;
 	args->post_syncpt_id = tegra_dc_get_syncpt_id(tegra_fb->win->dc);
 
@@ -583,25 +595,6 @@ surf_err:
 	}
 	kfree(data);
 	return err;
-}
-
-static int tegra_fb_mmap(struct fb_info *info, struct vm_area_struct *vma)
-{
-        struct tegra_fb_info *tegra_fb = info->par;
-        struct tegra_dc_win *win = tegra_fb->win;
-        unsigned long size = vma->vm_end - vma->vm_start;
-        unsigned long offset = vma->vm_pgoff << PAGE_SHIFT;
- 
-        if (offset + size > win->size)
-                return -EINVAL;
-
-        offset += win->phys_addr + win->offset;
-        if (remap_pfn_range(vma, vma->vm_start, offset >> PAGE_SHIFT,
-                            size, PAGE_READONLY))
-                return -EAGAIN;
-
-        vma->vm_flags |= VM_RESERVED;
-        return 0;
 }
 
 /* TODO: implement private window ioctls to set overlay x,y */
@@ -692,7 +685,6 @@ static struct fb_ops tegra_fb_ops = {
 	.fb_fillrect = tegra_fb_fillrect,
 	.fb_copyarea = tegra_fb_copyarea,
 	.fb_imageblit = tegra_fb_imageblit,
-        .fb_mmap = tegra_fb_mmap,
 	.fb_ioctl = tegra_fb_ioctl,
 };
 
@@ -880,6 +872,8 @@ struct tegra_fb_info *tegra_fb_register(struct nvhost_device *ndev,
 	dev_info(&ndev->dev, "probed\n");
 
 	if (fb_data->flags & TEGRA_FB_FLIP_ON_PROBE) {
+                tegra_dc_set_default_emc(tegra_fb->win->dc);
+                tegra_dc_set_dynamic_emc(&tegra_fb->win, 1);
 		tegra_dc_update_windows(&tegra_fb->win, 1);
 		tegra_dc_sync_windows(&tegra_fb->win, 1);
 	}

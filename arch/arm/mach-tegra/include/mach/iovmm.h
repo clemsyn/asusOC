@@ -146,6 +146,9 @@ int tegra_iovmm_client_trylock(struct tegra_iovmm_client *client);
 /* called by clients after DMA operations are complete */
 void tegra_iovmm_client_unlock(struct tegra_iovmm_client *client);
 
+/* returns size of largest free iovm block */
+size_t tegra_iovmm_get_max_free(struct tegra_iovmm_client *client);
+
 /* called by clients to allocate a new iovmm_area and reserve I/O virtual
  * address space for it. if ops is NULL, clients should subsequently call
  * tegra_iovmm_vm_map_pages and/or tegra_iovmm_vm_insert_pfn to explicitly
