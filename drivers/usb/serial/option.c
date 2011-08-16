@@ -45,6 +45,7 @@
 #include <linux/kernel.h>
 #include <linux/jiffies.h>
 #include <linux/errno.h>
+#include <linux/gpio.h>
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
 #include <linux/slab.h>
@@ -55,9 +56,14 @@
 // +++++++ This is added due to the selective suspend support from HUAWEI. +++++++
 #include <linux/version.h>
 // ------- This is added due to the selective suspend support from HUAWEI. -------
+#include <linux/wakelock.h>
 /* This is removed out due to the selective suspend support from HUAWEI.
 #include "usb-wwan.h"
 */
+
+#include "../../../arch/arm/mach-tegra/gpio-names.h"
+
+#define GPIO_MODEM_WAKEUP TEGRA_GPIO_PQ6
 
 /* Function prototypes */
 static int  option_probe(struct usb_serial *serial,
@@ -1111,6 +1117,9 @@ struct option_port_private {
 	unsigned long tx_start_time[N_OUT_URB];
 };
 
+static struct wake_lock modem_wakeup_wake_lock;
+static spinlock_t modem_wakeup_spinlock;
+
 // +++++++ This is added due to the selective suspend support from HUAWEI. +++++++
 /*Begin: Declared the global variables for selective suspend feature by fangxiaozhi*/
 static struct delayed_work *hw_suspend_wq = NULL; 
@@ -1133,6 +1142,9 @@ static int __init option_init(void)
 	printk(KERN_INFO KBUILD_MODNAME ": " DRIVER_VERSION ":"
 	       DRIVER_DESC "\n");
 
+	wake_lock_init(&modem_wakeup_wake_lock, WAKE_LOCK_SUSPEND, "modem_wakeup_lock");
+	spin_lock_init(&modem_wakeup_spinlock);
+
 	return 0;
 
 failed_driver_register:
@@ -1149,6 +1161,67 @@ static void __exit option_exit(void)
 
 module_init(option_init);
 module_exit(option_exit);
+
+// +++++++ Leslie Yu +++++++
+static void *s_dev_id = NULL;
+
+// Added for handle the modem wakeup while the system is not suspended since the remote wakeup is not supported.
+static irqreturn_t modem_wakeup_irq_handler(int irq, void *dev_id)
+{
+	int r = 0;
+	struct usb_serial *serial = s_dev_id;
+
+	printk("modem_wakeup_irq_handler(): +\n");
+	printk("modem_wakeup_irq_handler(): Hold the wake lock for the modem wakeup pin for 2 seconds.\n");
+	wake_lock_timeout(&modem_wakeup_wake_lock, 2 * HZ);
+
+	if (NULL == serial) {
+		printk("modem_wakeup_irq_handler(): There is no USB serial interface for this tty port.\n");
+	} else {
+		r = usb_autopm_get_interface_async(serial->interface);
+		if (r == 0) {
+			usb_autopm_put_interface_no_suspend(serial->interface);
+		}
+	}
+	printk("modem_wakeup_irq_handler(): -\n");
+
+	return IRQ_HANDLED;
+}
+
+static void init_modem_wakeup_irq_handler(void *dev_id)
+{
+	int modem_wakeup_irq = gpio_to_irq(GPIO_MODEM_WAKEUP);
+	int rc = 0;
+
+	spin_lock(&modem_wakeup_spinlock);
+	if (s_dev_id != NULL) {
+		printk("init_modem_wakeup_irq_handler(): No need to request IRQ again for this new tty port.\n");
+	} else {
+		s_dev_id = dev_id;
+		rc = request_irq(modem_wakeup_irq, modem_wakeup_irq_handler,
+				IRQF_TRIGGER_FALLING, "modem_wakeup_irq_handler", NULL);
+		if (rc < 0) {
+			printk("init_modem_wakeup_irq_handler(): Could not register modem_wakeup_irq_handler, irq = %d, rc = %d\n",
+					modem_wakeup_irq, rc);
+		}
+	}
+	spin_unlock(&modem_wakeup_spinlock);
+}
+
+static void free_modem_wakeup_irq_handler(void *dev_id)
+{
+	int modem_wakeup_irq = gpio_to_irq(GPIO_MODEM_WAKEUP);
+
+	spin_lock(&modem_wakeup_spinlock);
+	if (s_dev_id != dev_id) {
+		printk("init_modem_wakeup_irq_handler(): No need to free IRQ since we do not request IRQ for this tty port.\n");
+	} else {
+		s_dev_id = NULL;
+		free_irq(modem_wakeup_irq, NULL);
+	}
+	spin_unlock(&modem_wakeup_spinlock);
+}
+// ------- Leslie Yu -------
 
 static int option_probe(struct usb_serial *serial,
 			const struct usb_device_id *id)
@@ -1595,8 +1668,9 @@ static int option_open(struct tty_struct *tty, struct usb_serial_port *port)
 	portdata = usb_get_serial_port_data(port);
 	intfdata = serial->private; 
 
+	printk("%s()+\n", __func__);
 	dbg("%s", __func__);
-	printk(KERN_ERR"fxz-%s: called\n", __func__);
+	//printk(KERN_ERR"fxz-%s: called\n", __func__);
 	
 /*Begin : Added for 29kernel selective suspend by lkf*/
 #if (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,29))
@@ -1635,6 +1709,11 @@ static int option_open(struct tty_struct *tty, struct usb_serial_port *port)
 	portdata->opened = 1;
 	spin_unlock_irq(&intfdata->susp_lock);
 
+	// init the modem wakeup irq handler since the remote wakeup is not supported.
+	init_modem_wakeup_irq_handler(serial);
+
+	printk("%s()-\n", __func__);
+
 	return 0;
 }
 
@@ -1668,8 +1747,9 @@ static void option_close(struct usb_serial_port *port)
 	struct option_port_private *portdata;
 	struct option_intf_private *intfdata = port->serial->private;
 
+	printk("%s()+\n", __func__);
 	dbg("%s", __func__);
-	printk(KERN_ERR"fxz-%s: called\n", __func__);
+	//printk(KERN_ERR"fxz-%s: called\n", __func__);
 	portdata = usb_get_serial_port_data(port);
 
 	/*Begin : Added for 29kernel selective suspend by lkf*/
@@ -1702,6 +1782,10 @@ static void option_close(struct usb_serial_port *port)
 		serial->interface->needs_remote_wakeup = 0;
 	}
 
+	// free the modem wakeup irq handler
+	free_modem_wakeup_irq_handler(serial);
+
+	printk("%s()-\n", __func__);
 }
 /* Helper functions used by option_setup_urbs */
 static struct urb *option_setup_urb(struct usb_serial *serial, int endpoint,

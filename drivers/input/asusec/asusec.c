@@ -153,27 +153,7 @@ static struct i2c_driver asusec_driver = {
 	.id_table = asusec_id,
 };
 
-/* tapclick toggle - netarchy*/
-int tapclick = 1;
 
-static ssize_t tap_click_show(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	return sprintf(buf, "%d\n", tapclick);
-}
-
-static ssize_t tap_click_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
-{
-	unsigned ret;
-	ret = sscanf(buf, "%d", &tapclick);
-	if(ret != 1)
-	{
-		return -EINVAL;
-	}
-	
-	return count;
-}
-DEVICE_ATTR(tap_toggle, 0666, tap_click_show, tap_click_store);
-/* end tapclick toggle - netarchy */
 static DEVICE_ATTR(ec_status, S_IWUSR | S_IRUGO, asusec_show,NULL);
 static DEVICE_ATTR(ec_info, S_IWUSR | S_IRUGO, asusec_info_show,NULL);
 static DEVICE_ATTR(ec_dock, S_IWUSR | S_IRUGO, asusec_show_dock,NULL);
@@ -192,7 +172,6 @@ static struct attribute *asusec_smbus_attributes[] = {
 	&dev_attr_ec_wakeup.attr,
 	&dev_attr_ec_dock_discharge.attr,
 	&dev_attr_ec_dock_battery.attr,
-        &dev_attr_tap_toggle.attr,
 	&dev_attr_ec_dock_battery_all.attr,
 	&dev_attr_ec_dock_control_flag.attr,
 NULL
@@ -1426,7 +1405,11 @@ static void asusec_work_function(struct work_struct *dat)
 	if (ec_chip->wakeup_lcd){
 		if (gpio_get_value(TEGRA_GPIO_PS4)){
 			ec_chip->wakeup_lcd = 0;
-			ec_chip->dock_in = gpio_get_value(TEGRA_GPIO_PX5) ? 0 : 1;
+			if (ASUSGetProjectID()==101){
+				ec_chip->dock_in = gpio_get_value(TEGRA_GPIO_PX5) ? 0 : 1;
+			} else if (ASUSGetProjectID()==102){
+				ec_chip->dock_in = 1;
+			}
 			wake_lock_timeout(&ec_chip->wake_lock, 3*HZ);
 			msleep(500);
 		}
@@ -1848,8 +1831,14 @@ static int asusec_resume(struct i2c_client *client){
 	printk("asusec_resume+\n");
 
 	ec_chip->suspend_state = 0;
-	asusec_dock_info_update();
-	asusec_dock_status_check();
+	if (ASUSGetProjectID()==101){
+		asusec_dock_info_update();
+		asusec_dock_status_check();
+	} else if (ASUSGetProjectID()==102){
+		ec_chip->init_success = 0;
+		wake_lock(&ec_chip->wake_lock_init);
+		queue_delayed_work(asusec_wq, &ec_chip->asusec_dock_init_work, 0);
+	}
 
 	printk("asusec_resume-\n");
 	return 0;	
@@ -1881,7 +1870,7 @@ static ssize_t asusec_switch_name(struct switch_dev *sdev, char *buf)
 static ssize_t asusec_switch_state(struct switch_dev *sdev, char *buf)
 {
 	if (ASUSGetProjectID() == 101) {
-		return sprintf(buf, "%s\n", (ec_chip->dock_in ? "10" : "0"));
+		return sprintf(buf, "%s\n", (ec_chip->dock_in && ec_chip->init_success ? "10" : "0"));
 	} else {
 		return sprintf(buf, "%s\n", "0");
 	}

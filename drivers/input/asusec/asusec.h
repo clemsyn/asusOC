@@ -308,4 +308,3 @@ struct asusec_chip {
 };
 
 #endif
-

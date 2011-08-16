@@ -174,6 +174,8 @@ unsigned int ASUSCheckWLANVendor(unsigned int vendor);
  */
 unsigned int ASUSCheckTouchVendor(unsigned int vendor);
 
+extern u32 lcd_pclk_khz;
+
 #if defined(__cplusplus)
 }
 #endif

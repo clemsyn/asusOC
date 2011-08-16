@@ -153,6 +153,8 @@
 #define PMC_BLINK_TIMER_DATA_OFF_SHIFT	16
 #define PMC_BLINK_TIMER_DATA_OFF_MASK	0xffff
 
+u32 lcd_pclk_khz;
+
 static void __iomem *reg_clk_base = IO_ADDRESS(TEGRA_CLK_RESET_BASE);
 static void __iomem *reg_pmc_base = IO_ADDRESS(TEGRA_PMC_BASE);
 
@@ -669,15 +671,31 @@ static void tegra2_pll_clk_init(struct clk *c)
 	/* TODO: The following is only for HSD. */
 	if(!strcmp(c->name, "pll_c")) {
 		u32 pll_c_mul;
-		if (ASUS3GAvailable())
-			pll_c_mul = 587;
-		else {
-			/* There might be a proper pclk for wifi sku in the future.
-			 * Another 3G/Wifi sku check is in dc.c.
-			 */
-			pll_c_mul = 587;
+
+		switch(ASUSGetProjectID()){
+		case 101:
+			if (ASUS3GAvailable()) {
+				/* TF101 3G sku */
+				lcd_pclk_khz = 83900;
+				printk("%s(%d): TF101G: lcd_pclk_khz= %d\n", __FUNCTION__, __LINE__, lcd_pclk_khz);
+			} else {
+				/* TF101 Wifi sku */
+				lcd_pclk_khz = 74000;
+				printk("%s(%d): TF101: lcd_pclk_khz= %d\n", __FUNCTION__, __LINE__, lcd_pclk_khz);
+			}
+			break;
+		case 102:
+			/* SL101 */
+			lcd_pclk_khz = 83900;
+			printk("%s(%d): SL101: lcd_pclk_khz= %d\n", __FUNCTION__, __LINE__, lcd_pclk_khz);
+			break;
+		default:
+			lcd_pclk_khz = 83900;
+			printk("%s(%d): ID= %d; lcd_pclk_khz= %d\n", __FUNCTION__, __LINE__, ASUSGetProjectID(), lcd_pclk_khz);
+
 		}
 
+		pll_c_mul = (lcd_pclk_khz * (600000/lcd_pclk_khz))/1000;
 		printk("LCD: Set mul of pll_c as \"%d\" for disp1\n", pll_c_mul);
 		val &= ~PLL_BASE_DIVN_MASK;
 		val = val | (pll_c_mul << PLL_BASE_DIVN_SHIFT);

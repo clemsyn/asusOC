@@ -146,8 +146,6 @@ const struct fb_videomode tegra_dc_hdmi_supported_modes[] = {
 		.vmode =	FB_VMODE_NONINTERLACED,
 		.sync = 0,
 	},
-
-#ifdef CONFIG_TEGRA_ENABLE_SUPPORT_FOR_1080p_30HZ
 	/* 1920x1080p 30Hz EIA/CEA-861-B Format 34 */
 	{
 		.xres =		1920,
@@ -162,7 +160,6 @@ const struct fb_videomode tegra_dc_hdmi_supported_modes[] = {
 		.vmode =	FB_VMODE_NONINTERLACED,
 		.sync = FB_SYNC_HOR_HIGH_ACT | FB_SYNC_VERT_HIGH_ACT,
 	},
-#else
 	/* 1920x1080p 59.94/60hz EIA/CEA-861-B Format 16 */
 	{
 		.xres =		1920,
@@ -177,7 +174,6 @@ const struct fb_videomode tegra_dc_hdmi_supported_modes[] = {
 		.vmode =	FB_VMODE_NONINTERLACED,
 		.sync = FB_SYNC_HOR_HIGH_ACT | FB_SYNC_VERT_HIGH_ACT,
 	},
-#endif
 };
 
 /* table of electrical settings, must be in acending order. */
@@ -488,27 +484,52 @@ static void hdmi_dumpregs(struct tegra_dc_hdmi_data *hdmi)
 
 #define PIXCLOCK_TOLERANCE	200
 
+static int tegra_dc_calc_clock_per_frame(const struct fb_videomode *mode)
+{
+	return (mode->left_margin + mode->xres +
+		mode->right_margin + mode->hsync_len) *
+	       (mode->upper_margin + mode->yres +
+		mode->lower_margin + mode->vsync_len);
+}
 static bool tegra_dc_hdmi_mode_equal(const struct fb_videomode *mode1,
 					const struct fb_videomode *mode2)
 {
+	int clock_per_frame = tegra_dc_calc_clock_per_frame(mode1);
+
+	/* allows up to 1Hz of pixclock difference */
 	return mode1->xres	== mode2->xres &&
 		mode1->yres	== mode2->yres &&
+	/*	(abs(PICOS2KHZ(mode1->pixclock - mode2->pixclock)) *
+		1000 / clock_per_frame <= 1) && */
 		mode1->vmode	== mode2->vmode;
 }
 
-static bool tegra_dc_hdmi_mode_filter(struct fb_videomode *mode)
+static bool tegra_dc_hdmi_valid_pixclock(const struct tegra_dc *dc,
+					const struct fb_videomode *mode)
+{
+	unsigned max_pixclock = tegra_dc_get_out_max_pixclock(dc);
+	if (max_pixclock) {
+		// this might look counter-intuitive, but pixclock's unit is picos(not Khz)
+		return mode->pixclock >= max_pixclock;
+	} else {
+		return true;
+	}
+}
+
+static bool tegra_dc_hdmi_mode_filter(const struct tegra_dc *dc,
+					struct fb_videomode *mode)
 {
 	int i;
-	int clocks;
+	int clock_per_frame;
 
 	for (i = 0; i < ARRAY_SIZE(tegra_dc_hdmi_supported_modes); i++) {
-		if (tegra_dc_hdmi_mode_equal(&tegra_dc_hdmi_supported_modes[i],
-					     mode)) {
+		if (tegra_dc_hdmi_mode_equal(&tegra_dc_hdmi_supported_modes[i], mode) &&
+			tegra_dc_hdmi_valid_pixclock(dc, &tegra_dc_hdmi_supported_modes[i])) {
 			memcpy(mode, &tegra_dc_hdmi_supported_modes[i], sizeof(*mode));
 			mode->flag = FB_MODE_IS_DETAILED;
-			clocks = (mode->left_margin + mode->xres + mode->right_margin + mode->hsync_len) *
-				(mode->upper_margin + mode->yres + mode->lower_margin + mode->vsync_len);
-			mode->refresh = (PICOS2KHZ(mode->pixclock) * 1000) / clocks;
+			clock_per_frame = tegra_dc_calc_clock_per_frame(mode);
+			mode->refresh = (PICOS2KHZ(mode->pixclock) * 1000)
+					/ clock_per_frame;
 			return true;
 		}
 	}
@@ -699,7 +720,6 @@ static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 		err = -EBUSY;
 		goto err_put_clock;
 	}
-	enable_irq_wake(gpio_to_irq(dc->out->hotplug_gpio));
 
 	hdmi->edid = tegra_edid_create(dc->out->dcc_bus);
 	if (IS_ERR_OR_NULL(hdmi->edid)) {
@@ -748,7 +768,6 @@ static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 err_edid_destroy:
 	tegra_edid_destroy(hdmi->edid);
 err_free_irq:
-	disable_irq_wake(gpio_to_irq(dc->out->hotplug_gpio));
 	free_irq(gpio_to_irq(dc->out->hotplug_gpio), dc);
 err_put_clock:
 	if (!IS_ERR_OR_NULL(disp2_clk))
@@ -770,7 +789,6 @@ static void tegra_dc_hdmi_destroy(struct tegra_dc *dc)
 {
 	struct tegra_dc_hdmi_data *hdmi = tegra_dc_get_outdata(dc);
 
-	disable_irq_wake(gpio_to_irq(dc->out->hotplug_gpio));
 	free_irq(gpio_to_irq(dc->out->hotplug_gpio), dc);
 	cancel_delayed_work_sync(&hdmi->work);
 	switch_dev_unregister(&hdmi->hpd_switch);
@@ -1304,13 +1322,13 @@ static void tegra_dc_hdmi_enable(struct tegra_dc *dc)
 	tegra_dc_writel(dc, GENERAL_ACT_REQ, DC_CMD_STATE_CONTROL);
 
 	if(gpio_get_value(dc->out->hotplug_gpio)) {
-          printk("HDMI is connected. Set HDCP.\n");
-          tegra_nvhdcp_set_plug(hdmi->nvhdcp, 1);
+		printk("HDMI is connected. Set HDCP.\n");
+		tegra_nvhdcp_set_plug(hdmi->nvhdcp, 1);
+	} else {
+		printk("HDMI is removed?\n");
+		tegra_nvhdcp_set_plug(hdmi->nvhdcp, 0);
+	}
 
-          } else {
-          printk("HDMI is removed?\n");
-          tegra_nvhdcp_set_plug(hdmi->nvhdcp, 0);
-        }
 	switch(hdmi_resolution) {
 	case HDMI_ACTIVE_1920_1080:
 		tegra_hdmi_writel(hdmi, 0x0, HDMI_NV_PDISP_HDMI_AVI_INFOFRAME_STATUS);
@@ -1345,7 +1363,7 @@ static void tegra_dc_hdmi_disable(struct tegra_dc *dc)
 
 	tegra_periph_reset_assert(hdmi->clk);
 	clk_disable(hdmi->clk);
-        tegra_dvfs_set_rate(hdmi->clk, 0);
+	tegra_dvfs_set_rate(hdmi->clk, 0);
 }
 
 struct tegra_dc_out_ops tegra_dc_hdmi_ops = {

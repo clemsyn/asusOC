@@ -16,7 +16,6 @@
 	printk(KERN_ERR "elan_i2c_asus: [%s] " format , __FUNCTION__ , ## arg)
 	
 #define CONVERSION_TIME_MS		50
-#define FINGER_NUM				2
 
 #define ELAN_RETRY_COUNT		3
 
@@ -119,40 +118,17 @@
 #define ETP_2FT_YMAX			(192 - ETP_2FT_FUZZ)
 
 struct elantech_data {
-	unsigned int tap_num;
-	unsigned int touch_on_x;
-	unsigned int touch_on_y;
-	unsigned int release_x;
-	unsigned int release_y;
+	unsigned int xmax;
+	unsigned int ymax;
+
+	int left_button;
+	int right_button;
+
+	int fingers;
+	struct { int x, y; } pos[2];
+
 	struct input_dev *abs_dev;
 };
-
-struct ScrollData 
-{
-    int left, right, up, down;
-};
-
-typedef enum {
-    BOTTOM_EDGE = 1,
-    TOP_EDGE = 2,
-    LEFT_EDGE = 4,
-    RIGHT_EDGE = 8,
-    LEFT_BOTTOM_EDGE = BOTTOM_EDGE | LEFT_EDGE,
-    RIGHT_BOTTOM_EDGE = BOTTOM_EDGE | RIGHT_EDGE,
-    RIGHT_TOP_EDGE = TOP_EDGE | RIGHT_EDGE,
-    LEFT_TOP_EDGE = TOP_EDGE | LEFT_EDGE
-} edge_type;
-
-typedef enum {
-	NO_FINGER_ON_TOUCHPAD,  	//0
-	FIRST_TIME_FINGER_ON_TOUCH, 	//1
-	FINGER_MOVE, 			//2
-	TP_CLICK,   			//3
-	TP_DRAG,                        //4
-	TP_DRAG_MOVE,                   //5
-	TP_DOUBLE_CLICK,                //6
-	TP_TIME_OUT                     //7
-} tap_type;
 
 int elantech_detect(struct asusec_chip *ec_chip);
 int elantech_init(struct asusec_chip *ec_chip);

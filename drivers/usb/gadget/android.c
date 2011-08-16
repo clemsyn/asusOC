@@ -31,7 +31,7 @@
 #include <linux/usb/ch9.h>
 #include <linux/usb/composite.h>
 #include <linux/usb/gadget.h>
-
+#include "../../../arch/arm/mach-tegra/clock.h"
 #include "gadget_chips.h"
 
 /*
@@ -66,6 +66,11 @@ EXPORT_SYMBOL(USB_SN_String);
 #define USB_PRODUCT_ID_MTP		0x4E0F
 #define USB_PRODUCT_ID_RNDIS		0x4E2F
 #define USB_PRODUCT_ID_RNDIS_ADB	0x4E3F
+/* ASUS SL101 product ID */
+#define USB_SL101_PRODUCT_ID_MTP_ADB		0x4E01
+#define USB_SL101_PRODUCT_ID_MTP		0x4E00
+#define USB_SL101_PRODUCT_ID_RNDIS		0x4E02
+#define USB_SL101_PRODUCT_ID_RNDIS_ADB    0x4E03
 /* ASUS vendor ID */
 #define USB_VENDOR_ID			0x0B05
 
@@ -361,9 +366,9 @@ static int android_bind(struct usb_composite_dev *cdev)
 	device_desc.idVendor = __constant_cpu_to_le16(get_vendor_id(dev));
 	device_desc.idProduct = __constant_cpu_to_le16(get_product_id(dev));
 
-	if(device_desc.idProduct == USB_PRODUCT_ID_MTP)
+	if(device_desc.idProduct == USB_PRODUCT_ID_MTP || device_desc.idProduct == USB_SL101_PRODUCT_ID_MTP)
 		strcpy(desc_interface_name, "MTP");
-	else if(device_desc.idProduct == USB_PRODUCT_ID_RNDIS)
+	else if(device_desc.idProduct == USB_PRODUCT_ID_RNDIS || device_desc.idProduct == USB_SL101_PRODUCT_ID_RNDIS)
 		strcpy(desc_interface_name, "ASUS RNDIS");
 	else{
 		strcpy(desc_interface_name, USB_PRODUCT_NAME);
@@ -457,20 +462,18 @@ void android_enable_function(struct usb_function *f, int enable)
 			}
 		}
 #endif
-
 #ifdef CONFIG_USB_ANDROID_ACCESSORY
-                if (!strcmp(f->name, "accessory") && enable) {
-                        struct usb_function             *func;
- 
-                    /* disable everything else (and keep adb for now) */
-                        list_for_each_entry(func, &android_config_driver.functions, list) {
-                                if (strcmp(func->name, "accessory")
-                                        && strcmp(func->name, "adb")) {
-                                        usb_function_set_enabled(func, 0);
-                                }
-                        }
-         }
+		if (!strcmp(f->name, "accessory") && enable) {
+			struct usb_function		*func;
 
+		    /* disable everything else (and keep adb for now) */
+			list_for_each_entry(func, &android_config_driver.functions, list) {
+				if (strcmp(func->name, "accessory")
+					&& strcmp(func->name, "adb")) {
+					usb_function_set_enabled(func, 0);
+				}
+			}
+        }
 #endif
 
 		update_dev_desc(dev);
@@ -478,9 +481,9 @@ void android_enable_function(struct usb_function *f, int enable)
 		device_desc.idVendor = __constant_cpu_to_le16(get_vendor_id(dev));
 		device_desc.idProduct = __constant_cpu_to_le16(get_product_id(dev));
 
-		if(device_desc.idProduct == USB_PRODUCT_ID_MTP)
+		if(device_desc.idProduct == USB_PRODUCT_ID_MTP || device_desc.idProduct == USB_SL101_PRODUCT_ID_MTP)
 			strcpy(desc_interface_name, "MTP");
-		else if(device_desc.idProduct == USB_PRODUCT_ID_RNDIS)
+		else if(device_desc.idProduct == USB_PRODUCT_ID_RNDIS || device_desc.idProduct == USB_SL101_PRODUCT_ID_RNDIS)
 			strcpy(desc_interface_name, "ASUS RNDIS");
 		else{
 			strcpy(desc_interface_name, USB_PRODUCT_NAME);

@@ -43,10 +43,6 @@
 #define ventana_hdmi_hpd	TEGRA_GPIO_PN7
 #define ventana_hdmi_enb	TEGRA_GPIO_PV5
 
-/*panel power on sequence timing*/
-#define ventana_pnl_to_lvds_ms 0
-#define ventana_lvds_to_bl_ms  200
-
 static struct regulator *ventana_hdmi_reg = NULL;
 static struct regulator *ventana_hdmi_pll = NULL;
 
@@ -113,9 +109,7 @@ static int ventana_panel_enable(void)
 	regulator_put(reg);
 
 	gpio_set_value(ventana_pnl_pwr_enb, 1);
-        mdelay(ventana_pnl_to_lvds_ms);
 	gpio_set_value(ventana_lvds_shutdown, 1);
-        mdelay(ventana_lvds_to_bl_ms);
 	return 0;
 }
 
@@ -205,9 +199,9 @@ static struct resource ventana_disp2_resources[] = {
 
 static struct tegra_dc_mode ventana_panel_modes[] = {
 	{
-                /* Warning.
-                 * The real LCD pclk will be replaced in tegra_dc_probe(). */
-                .pclk = 83800000,
+		/* Warning.
+		 * The real LCD pclk will be replaced in tegra_dc_probe(). */
+		.pclk = 83800000,
 		.h_ref_to_sync = 11,
 		.v_ref_to_sync = 1,
 		.h_sync_width = 58,
@@ -256,6 +250,8 @@ static struct tegra_dc_out ventana_disp2_out = {
 
 	.dcc_bus	= 1,
 	.hotplug_gpio	= ventana_hdmi_hpd,
+
+	.max_pixclock	= KHZ2PICOS(148500),
 
 	.align		= TEGRA_DC_ALIGN_MSB,
 	.order		= TEGRA_DC_ORDER_RED_BLUE,
@@ -344,23 +340,21 @@ struct early_suspend ventana_panel_early_suspender;
 
 static void ventana_panel_early_suspend(struct early_suspend *h)
 {
-	printk("ventana_panel_early_suspend() in+\n");
-
 	unsigned i;
-        for (i = 0; i < num_registered_fb; i++)
-                fb_blank(registered_fb[i], FB_BLANK_POWERDOWN);
 
+	printk("ventana_panel_early_suspend() in+\n");
+	for (i = 0; i < num_registered_fb; i++)
+		fb_blank(registered_fb[i], FB_BLANK_POWERDOWN);
 	printk("ventana_panel_early_suspend() out-\n");
 }
 
 static void ventana_panel_late_resume(struct early_suspend *h)
 {
-	printk("ventana_panel_late_resume() in+\n");
-
 	unsigned i;
-        for (i = 0; i < num_registered_fb; i++)
-                fb_blank(registered_fb[i], FB_BLANK_UNBLANK);
 
+	printk("ventana_panel_late_resume() in+\n");
+	for (i = 0; i < num_registered_fb; i++)
+		fb_blank(registered_fb[i], FB_BLANK_UNBLANK);
 	printk("ventana_panel_late_resume() out-\n");
 }
 #endif
