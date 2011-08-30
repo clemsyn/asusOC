@@ -80,9 +80,9 @@ static int tegra_fb_open(struct fb_info *info, int user)
 	struct tegra_fb_info *tegra_fb = info->par;
 
 	if (atomic_xchg(&tegra_fb->in_use, 1))
-                return -EBUSY;
+		return -EBUSY;
 
-        tegra_fb->user_nvmap = NULL;
+	tegra_fb->user_nvmap = NULL;
 
 	return 0;
 }
@@ -114,9 +114,9 @@ static int tegra_fb_release(struct fb_info *info, int user)
 	if (tegra_fb->user_nvmap) {
 		nvmap_client_put(tegra_fb->user_nvmap);
 		tegra_fb->user_nvmap = NULL;
-        }
+	}
 
-        WARN_ON(!atomic_xchg(&tegra_fb->in_use, 0));
+	WARN_ON(!atomic_xchg(&tegra_fb->in_use, 0));
 
 	return 0;
 }
@@ -175,9 +175,9 @@ static int tegra_fb_set_par(struct fb_info *info)
 
 	if (var->pixclock) {
 		struct tegra_dc_mode mode;
-                struct fb_videomode m;
+		struct fb_videomode m;
 
-                fb_var_to_videomode(&m, var);
+		fb_var_to_videomode(&m, var);
 
 		info->mode = (struct fb_videomode *)
 			fb_find_nearest_mode(&m, &info->modelist);
@@ -305,8 +305,8 @@ static int tegra_fb_pan_display(struct fb_var_screeninfo *var,
 		tegra_fb->win->phys_addr = addr;
 		/* TODO: update virt_addr */
 
-                tegra_dc_set_default_emc(tegra_fb->win->dc);
-                tegra_dc_set_dynamic_emc(&tegra_fb->win, 1);
+		tegra_dc_set_default_emc(tegra_fb->win->dc);
+		tegra_dc_set_dynamic_emc(&tegra_fb->win, 1);
 		tegra_dc_update_windows(&tegra_fb->win, 1);
 		tegra_dc_sync_windows(&tegra_fb->win, 1);
 	}
@@ -412,12 +412,12 @@ static int tegra_fb_set_windowattr(struct tegra_fb_info *tegra_fb,
 		win->flags |= TEGRA_WIN_FLAG_BLEND_PREMULT;
 	else if (flip_win->attr.blend == TEGRA_FB_WIN_BLEND_COVERAGE)
 		win->flags |= TEGRA_WIN_FLAG_BLEND_COVERAGE;
-        if (flip_win->attr.flags & TEGRA_FB_WIN_FLAG_INVERT_H)
-                win->flags |= TEGRA_WIN_FLAG_INVERT_H;
-        if (flip_win->attr.flags & TEGRA_FB_WIN_FLAG_INVERT_V)
-                win->flags |= TEGRA_WIN_FLAG_INVERT_V;
-        if (flip_win->attr.flags & TEGRA_FB_WIN_FLAG_TILED)
-                win->flags |= TEGRA_WIN_FLAG_TILED;
+	if (flip_win->attr.flags & TEGRA_FB_WIN_FLAG_INVERT_H)
+		win->flags |= TEGRA_WIN_FLAG_INVERT_H;
+	if (flip_win->attr.flags & TEGRA_FB_WIN_FLAG_INVERT_V)
+		win->flags |= TEGRA_WIN_FLAG_INVERT_V;
+	if (flip_win->attr.flags & TEGRA_FB_WIN_FLAG_TILED)
+		win->flags |= TEGRA_WIN_FLAG_TILED;
 
 	win->fmt = flip_win->attr.pixformat;
 	win->x = flip_win->attr.x;
@@ -433,7 +433,7 @@ static int tegra_fb_set_windowattr(struct tegra_fb_info *tegra_fb,
 		"%s:application window x offset exceeds display width(%d)\n",
 		dev_name(&win->dc->ndev->dev), win->out_x, xres);
 	WARN_ONCE(win->out_y >= yres,
-		"%s:application window x offset exceeds display width(%d)\n",
+		"%s:application window y offset exceeds display height(%d)\n",
 		dev_name(&win->dc->ndev->dev), win->out_y, yres);
 	WARN_ONCE(win->out_x + win->out_w > xres && win->out_x < xres,
 		"%s:application window width(%d) exceeds display width(%d)\n",
@@ -469,7 +469,7 @@ static int tegra_fb_set_windowattr(struct tegra_fb_info *tegra_fb,
 					   flip_win->attr.pre_syncpt_id,
 					   flip_win->attr.pre_syncpt_val,
 					   msecs_to_jiffies(500),
-                                           NULL);
+					   NULL);
 	}
 
 
@@ -517,7 +517,7 @@ static void tegra_fb_flip_worker(struct work_struct *work)
 #endif
 	}
 
-        tegra_dc_set_dynamic_emc(wins, nr_win);
+	tegra_dc_set_dynamic_emc(wins, nr_win);
 	tegra_dc_update_windows(wins, nr_win);
 	/* TODO: implement swapinterval here */
 	tegra_dc_sync_windows(wins, nr_win);
@@ -575,12 +575,11 @@ static int tegra_fb_flip(struct tegra_fb_info *tegra_fb,
 
 	queue_work(tegra_fb->flip_wq, &data->work);
 
-        /*
-         * Before the queued flip_wq get scheduled, we set the EMC clock to the
-         * default value in order to do FLIP without glitch.
-         */
- 
-        tegra_dc_set_default_emc(tegra_fb->win->dc);
+	/*
+	 * Before the queued flip_wq get scheduled, we set the EMC clock to the
+	 * default value in order to do FLIP without glitch.
+	 */
+	tegra_dc_set_default_emc(tegra_fb->win->dc);
 
 	args->post_syncpt_val = syncpt_max;
 	args->post_syncpt_id = tegra_dc_get_syncpt_id(tegra_fb->win->dc);
@@ -875,8 +874,8 @@ struct tegra_fb_info *tegra_fb_register(struct nvhost_device *ndev,
 	dev_info(&ndev->dev, "probed\n");
 
 	if (fb_data->flags & TEGRA_FB_FLIP_ON_PROBE) {
-                tegra_dc_set_default_emc(tegra_fb->win->dc);
-                tegra_dc_set_dynamic_emc(&tegra_fb->win, 1);
+		tegra_dc_set_default_emc(tegra_fb->win->dc);
+		tegra_dc_set_dynamic_emc(&tegra_fb->win, 1);
 		tegra_dc_update_windows(&tegra_fb->win, 1);
 		tegra_dc_sync_windows(&tegra_fb->win, 1);
 	}
@@ -888,7 +887,7 @@ err_iounmap_fb:
 err_delete_wq:
 	destroy_workqueue(tegra_fb->flip_wq);
 err_put_client:
-        nvmap_client_put(tegra_fb->fb_nvmap);
+	nvmap_client_put(tegra_fb->fb_nvmap);
 err_free:
 	framebuffer_release(info);
 err:
@@ -915,3 +914,4 @@ void tegra_fb_unregister(struct tegra_fb_info *fb_info)
 	iounmap(info->screen_base);
 	framebuffer_release(info);
 }
+

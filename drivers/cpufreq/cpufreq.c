@@ -703,14 +703,15 @@ static ssize_t show_UV_mV_table(struct cpufreq_policy *policy, char *buf)
 
 static ssize_t store_UV_mV_table(struct cpufreq_policy *policy, const char *buf, size_t count)
 {
-       int ret = sscanf( buf, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",  &UV_mV_Ptr[14],
-                                                                &UV_mV_Ptr[13], &UV_mV_Ptr[12],
-                                                                &UV_mV_Ptr[11], &UV_mV_Ptr[10],
-                                                                &UV_mV_Ptr[9], &UV_mV_Ptr[8],
-                                                                &UV_mV_Ptr[7], &UV_mV_Ptr[6],
-                                                                &UV_mV_Ptr[5], &UV_mV_Ptr[4],
-                                                                &UV_mV_Ptr[3], &UV_mV_Ptr[2],
-                                                                &UV_mV_Ptr[1], &UV_mV_Ptr[0] );
+       int ret = sscanf( buf, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i", &UV_mV_Ptr[15], 
+                                                                 &UV_mV_Ptr[14], &UV_mV_Ptr[13],
+                                                                 &UV_mV_Ptr[12], &UV_mV_Ptr[11],
+                                                                 &UV_mV_Ptr[10], &UV_mV_Ptr[9],
+                                                                 &UV_mV_Ptr[8], &UV_mV_Ptr[7],
+                                                                 &UV_mV_Ptr[6], &UV_mV_Ptr[5],
+                                                                 &UV_mV_Ptr[4], &UV_mV_Ptr[3],
+                                                                 &UV_mV_Ptr[2], &UV_mV_Ptr[1],
+                                                                 &UV_mV_Ptr[0] );
         if (ret != 1)
                 return -EINVAL;
  

@@ -219,7 +219,7 @@ int tegra_update_cpu_speed(unsigned long rate)
 	 * This sets the minimum frequency, display or avp may request higher
 	 */
         if (rate >= 1000000)
-		clk_set_rate(emc_clk, 800000000); /* cpu 1000 MHz, super max */
+		clk_set_rate(emc_clk, 666000000); /* cpu 1000 MHz, super max */
 	if (rate >= 816000)
 		clk_set_rate(emc_clk, 600000000); /* cpu 816 MHz, emc max */
 	else if (rate >= 608000)
