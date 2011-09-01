@@ -166,22 +166,17 @@ static int wifi_remove(struct platform_device *pdev)
 	wifi_set_carddetect(0);	/* CardDetect (1->0) */
 
 	up(&wifi_control_sem);
+	mdelay(500);
 	return 0;
 }
 static int wifi_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	DHD_TRACE(("##> %s\n", __FUNCTION__));
-#if defined(OOB_INTR_ONLY)
-        bcmsdh_oob_intr_set(0);
-#endif /* (OOB_INTR_ONLY) */
 	return 0;
 }
 static int wifi_resume(struct platform_device *pdev)
 {
 	DHD_TRACE(("##> %s\n", __FUNCTION__));
-#if defined(OOB_INTR_ONLY)
-        bcmsdh_oob_intr_set(1);
-#endif /* (OOB_INTR_ONLY) */
 	return 0;
 }
 
